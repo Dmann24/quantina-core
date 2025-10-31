@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quantina Messenger</title>
+  <link rel="stylesheet" href="quantina-theme.css" />
+</head>
+<body>
+  <div class="quantina-chatbox" id="quantinaChat">
+    <div class="quantina-header">
+      <div class="quantina-profile">
+        <img src="https://avatars.githubusercontent.com/u/1?v=4" alt="Avatar" class="quantina-avatar">
+        <div class="quantina-user">
+          <strong>User 1</strong>
+          <span class="status"><span class="dot online"></span> Online</span>
+        </div>
+      </div>
+      <div class="quantina-actions">
+        <button class="quantina-pin" title="Pin/Unpin">📌</button>
+        <button class="quantina-refresh" title="Refresh">↻</button>
+        <button class="quantina-close" title="Close">✖</button>
+      </div>
+    </div>
+
+    <div class="quantina-card">
+      <p class="qtm-title">Product Manager – Quantina</p>
+      <a href="https://quantinasaas.com" target="_blank" class="qtm-link">Website</a>
+    </div>
+
+    <div class="qtm-messages">
+      <div class="qtm-msg qtm-them">
+        <b>Quantina:</b> Hello 👋 How can I help you today?
+        <div class="qtm-time">Just now</div>
+      </div>
+    </div>
+
+    <div class="qtm-input-bar">
+      <input type="text" class="qtm-input" placeholder="Type your message..." />
+      <button class="qtm-send">Send</button>
+    </div>
+  </div>
+  <div id="quantinaMessengerWidget" class="quantina-widget collapsed">
+  <div id="chatHeader"> ... </div>
+  <div id="chatWindow"> ... </div>
+</div>
+
+<script src="http://localhost:4001/socket.io/socket.io.js"></script>
+<script src="quantina-floating.js"></script>
+</body>
+</html>
