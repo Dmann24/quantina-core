@@ -40,6 +40,8 @@ import express from "express"; // already imported above, so skip this if it's t
 
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
+// ✅ Also serve same folder under /assets path
+app.use("/assets", express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 4001;
 const DEFAULT_LANG = "English"; // fallback language for new users
