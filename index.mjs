@@ -35,6 +35,11 @@ const __dirname = path.dirname(__filename);
 
 // Load .env locally; Railway injects env at runtime automatically
 dotenv.config({ path: path.resolve(__dirname, ".env") });
+// ✅ Serve static files like JSON, CSS, JS, etc.
+import express from "express"; // already imported above, so skip this if it's there
+
+const app = express();
+app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 4001;
 const DEFAULT_LANG = "English"; // fallback language for new users
@@ -48,7 +53,7 @@ if (!process.env.OPENAI_API_KEY) {
 // ---------------------------------------------------------
 // Create Express + HTTP server + Socket.IO
 // ---------------------------------------------------------
-const app = express();
+
 const server = http.createServer(app);
 
 const io = new Server(server, {
