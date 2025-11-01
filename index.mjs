@@ -36,7 +36,9 @@ const __dirname = path.dirname(__filename);
 // Load .env (Railway will also inject env vars at runtime)
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
-const PORT = process.env.PORT ?? 8080;
+const PORT = process.env.PORT || 4001;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
 const DEFAULT_LANG = "English"; // <- your chosen default
 const DEFAULT_PLAN = "FREE";    // future: FREE / PRO / ENTERPRISE
 const MODEL_TRANSLATE = "gpt-4o-mini"; // <- your chosen model
