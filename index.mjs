@@ -442,6 +442,10 @@ io.on("connection", (socket) => {
 // ---------------------------------------------------------
 // STATIC TEST FRONTEND (optional / nice for local dev)
 // ---------------------------------------------------------
+app.get("/", (req, res) => {
+  res.send("🚀 Quantina Core API & WebSocket server is running successfully.");
+});
+
 const publicPath = path.join(__dirname, "public");
 app.use(express.static(publicPath));
 
