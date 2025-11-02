@@ -3,4 +3,5 @@ uploads/
 quantina_chat.sqlite
 quantina.db
 node_modules/
+!public/langs/quantina_languages.json
 .env
