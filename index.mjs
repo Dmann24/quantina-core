@@ -106,6 +106,35 @@ await db.exec(`
   );
 `);
 
+// ✅ Migration: ensure all new columns exist even on older DBs
+const alterColumns = [
+  { name: "body_original", type: "TEXT" },
+  { name: "body_translated", type: "TEXT" },
+  { name: "detected_language", type: "TEXT" },
+  { name: "receiver_language", type: "TEXT" },
+  { name: "mode", type: "TEXT" }
+];
+
+for (const col of alterColumns) {
+  try {
+    await db.run(`ALTER TABLE messages ADD COLUMN ${col.name} ${col.type}`);
+    console.log(`🧩 Added missing column: ${col.name}`);
+  } catch (err) {
+    if (!err.message.includes("duplicate column")) {
+      console.error(`⚠️ Migration error for ${col.name}:`, err.message);
+    }
+  }
+}
+
+// user_prefs table: stores language pref per user
+await db.exec(`
+  CREATE TABLE IF NOT EXISTS user_prefs (
+    user_id TEXT PRIMARY KEY,
+    preferred_language TEXT DEFAULT '${DEFAULT_LANG}'
+  );
+`);
+
+
 // user_prefs table: stores language pref per user
 await db.exec(`
   CREATE TABLE IF NOT EXISTS user_prefs (
