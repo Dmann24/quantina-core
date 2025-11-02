@@ -1,11 +1,11 @@
 // =========================================================
-// Quantina Messenger Core (Railway Build v1.0)
+// Quantina Messenger Core (Railway Build v1.0 FINAL)
 // Express + Socket.IO + SQLite + OpenAI (gpt-4o-mini)
 // =========================================================
 //
-// What this server does:
-//  - Keeps running in the cloud (Railway) 24/7
-//  - Handles real-time peer-to-peer messaging
+// This server does:
+//  - Runs 24/7 on Railway
+//  - Handles real-time peer-to-peer messaging via Socket.IO
 //  - Auto-translates between users' preferred languages
 //  - Saves chat history, language prefs, and plan tier
 //
@@ -33,16 +33,12 @@ import OpenAI from "openai";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env locally; Railway injects env at runtime automatically
+// Load .env locally; Railway injects env automatically
 dotenv.config({ path: path.resolve(__dirname, ".env") });
-// ✅ Serve static files like JSON, CSS, JS, etc.
-import express from "express"; // already imported above, so skip this if it's there
 
-const app = express();
-app.use(express.static(path.join(__dirname, "public")));
-// ✅ Also serve same folder under /assets path
-app.use("/assets", express.static(path.join(__dirname, "public")));
-
+// ---------------------------------------------------------
+// Core constants
+// ---------------------------------------------------------
 const PORT = process.env.PORT || 4001;
 const DEFAULT_LANG = "English"; // fallback language for new users
 const DEFAULT_PLAN = "FREE";    // FREE / PRO / ENTERPRISE (future billing)
@@ -53,20 +49,31 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 // ---------------------------------------------------------
-// Create Express + HTTP server + Socket.IO
+// Express app + middleware
 // ---------------------------------------------------------
+const app = express();
 
+// serve static files from /public for normal paths
+app.use(express.static(path.join(__dirname, "public")));
+
+// ALSO serve that same folder under /assets so the widget can call
+// https://quantina-core-production.up.railway.app/assets/langs/quantina_languages.json
+app.use("/assets", express.static(path.join(__dirname, "public")));
+
+app.use(cors());
+app.use(express.json());
+
+// ---------------------------------------------------------
+// Create HTTP server + Socket.IO
+// ---------------------------------------------------------
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*", // tighten later to your domain(s)
+    origin: "*", // tighten later to https://yourdomain.com
     methods: ["GET", "POST"],
   },
 });
-
-app.use(cors());
-app.use(express.json());
 
 // ---------------------------------------------------------
 // OpenAI client
@@ -128,7 +135,7 @@ async function getUserPreferredLanguage(userId) {
   );
   if (row && row.preferred_language) return row.preferred_language;
 
-  // If no row, create default
+  // no row -> insert default
   await db.run(
     "INSERT OR REPLACE INTO user_prefs (user_id, preferred_language) VALUES (?, ?)",
     [userId, DEFAULT_LANG]
@@ -151,7 +158,7 @@ async function getUserPlan(userId) {
 
   if (row) return row;
 
-  // If no row, set default
+  // create default if missing
   await db.run(
     "INSERT OR REPLACE INTO plans (user_id, plan, messages_used, limit_per_month) VALUES (?, ?, ?, ?)",
     [userId, DEFAULT_PLAN, 0, 500]
@@ -176,7 +183,7 @@ async function incrementUserUsage(userId) {
 // Helpers: AI Language Detection + Translation
 // ---------------------------------------------------------
 
-// 1. detect language of a text
+// 1. Detect language of incoming text
 async function detectLanguageOfText(text) {
   if (!text || text.trim().length === 0) return "Unknown";
 
@@ -186,7 +193,7 @@ async function detectLanguageOfText(text) {
       {
         role: "system",
         content:
-          "Detect the language of the user's message. Reply with only the language name (like 'English', 'Punjabi', 'Russian').",
+          "Detect the language of the user's message. Reply with only the language name (e.g. 'English', 'Punjabi', 'Russian').",
       },
       { role: "user", content: text },
     ],
@@ -197,7 +204,7 @@ async function detectLanguageOfText(text) {
   return guess;
 }
 
-// 2. translate text into target language if needed
+// 2. Translate text to receiver's preferred language (if needed)
 async function translateTextIfNeeded(originalText, fromLang, toLang) {
   if (!originalText || originalText.trim() === "") {
     return "(empty message)";
@@ -208,7 +215,7 @@ async function translateTextIfNeeded(originalText, fromLang, toLang) {
     !toLang ||
     fromLang.toLowerCase() === toLang.toLowerCase()
   ) {
-    // Same language, no translation
+    // No translation needed
     return originalText;
   }
 
@@ -230,7 +237,7 @@ async function translateTextIfNeeded(originalText, fromLang, toLang) {
   );
 }
 
-// 3. full pipeline: take raw message, return translated + store in DB
+// 3. Full message pipeline: detect, translate, save, bump usage
 async function processPeerMessage({ senderId, receiverId, rawText }) {
   // a) detect sender language
   const detectedLang = await detectLanguageOfText(rawText);
@@ -245,7 +252,7 @@ async function processPeerMessage({ senderId, receiverId, rawText }) {
     receiverPrefLang
   );
 
-  // d) store message in DB
+  // d) save to DB
   const timestamp = new Date().toISOString();
 
   await db.run(
@@ -263,7 +270,7 @@ async function processPeerMessage({ senderId, receiverId, rawText }) {
     ]
   );
 
-  // e) bump usage for sender
+  // e) bump usage
   await getUserPlan(senderId);        // ensure row exists
   await incrementUserUsage(senderId); // increment
 
@@ -280,7 +287,7 @@ async function processPeerMessage({ senderId, receiverId, rawText }) {
 // REST API ROUTES
 // ---------------------------------------------------------
 
-// Health check
+// Basic health check
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
@@ -289,7 +296,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Return recent messages (debug / bootstrap chat history)
+// Return last ~50 messages (for debug / bootstrapping chat history)
 app.get("/api/messages", async (req, res) => {
   const rows = await db.all(
     "SELECT * FROM messages ORDER BY id DESC LIMIT 50"
@@ -332,7 +339,7 @@ app.get("/api/user/plan", async (req, res) => {
   res.json({ user_id, ...plan });
 });
 
-// Manual text-based peer message translation via REST
+// Manual text-based peer message translation (REST fallback)
 // POST /api/peer-message
 // body: { sender_id, receiver_id, text }
 app.post("/api/peer-message", async (req, res) => {
@@ -369,9 +376,9 @@ app.post("/api/peer-message", async (req, res) => {
 // SOCKET.IO: REALTIME P2P MESSAGING
 // ---------------------------------------------------------
 //
-// Frontend usage:
+// Frontend usage example:
 //
-// const socket = io("https://your-railway-app-url", {
+// const socket = io("https://quantina-core-production.up.railway.app", {
 //   auth: { token: "user123" } // <- how we identify that user
 // });
 //
@@ -392,7 +399,7 @@ io.on("connection", (socket) => {
 
   console.log(`🟢 Socket connected: ${userId}`);
 
-  // Make sure language pref + plan rows exist
+  // Ensure language pref + plan rows exist
   getUserPreferredLanguage(userId).catch(() => {});
   getUserPlan(userId).catch(() => {});
 
@@ -447,21 +454,16 @@ io.on("connection", (socket) => {
 });
 
 // ---------------------------------------------------------
-// STATIC TEST FRONTEND (optional / nice for local dev)
+// ROOT "/" ROUTE (simple fallback / health page for humans)
 // ---------------------------------------------------------
+// Note: We ALREADY mounted static above, so if /public/index.html exists
+// it'll be served BEFORE this .get("/") runs. This is just a fallback.
 app.get("/", (req, res) => {
-  res.send("🚀 Quantina Core API & WebSocket server is running successfully.");
-});
-
-const publicPath = path.join(__dirname, "public");
-app.use(express.static(publicPath));
-
-app.get("/", (req, res) => {
-  res.sendFile(path.join(publicPath, "index.html"));
+  res.send("🚀 Quantina Core API & WebSocket server is running.");
 });
 
 // ---------------------------------------------------------
-// START SERVER (only this - do NOT call app.listen separately)
+// START SERVER
 // ---------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`🚀 Quantina Core live on port ${PORT}`);
