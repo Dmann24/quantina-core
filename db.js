@@ -1,30 +1,21 @@
 // =============================================================
-// Quantina Core - SQLite Database Setup (Patched for body_original)
+// Quantina Core - SQLite Fix (For body_original Column)
 // =============================================================
 
 import sqlite3 from "sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// Detect environment path
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Database file location (persistent in Railway’s /data or local directory)
 const dbPath = path.join(__dirname, "quantina.db");
-
-// Initialize SQLite database
 const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error("❌ Failed to connect to SQLite:", err.message);
-  } else {
-    console.log("✅ SQLite connected at:", dbPath);
-  }
+  if (err) console.error("❌ SQLite connect failed:", err.message);
+  else console.log("✅ SQLite connected:", dbPath);
 });
 
-// =============================================================
-// Create table (if not exists) — baseline schema
-// =============================================================
+// 1️⃣ Ensure base table exists
 db.run(`
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,26 +25,37 @@ db.run(`
     mode TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
   )
-`, (err) => {
-  if (err) {
-    console.error("❌ Error creating messages table:", err.message);
-  } else {
-    console.log("✅ messages table verified.");
-  }
-});
+`);
 
-// =============================================================
-// Auto-migrate: ensure new column exists (body_original)
-// =============================================================
-db.run(`ALTER TABLE messages ADD COLUMN body_original TEXT;`, (err) => {
-  if (err && !err.message.includes("duplicate column name")) {
-    console.warn("⚠️ Migration skipped or failed:", err.message);
-  } else {
-    console.log("✅ Column body_original verified or added.");
-  }
-});
+// 2️⃣ Check if the body_original column exists
+db.get(
+  "PRAGMA table_info(messages);",
+  (err, row) => {
+    if (err) {
+      console.error("❌ Schema check failed:", err.message);
+      return;
+    }
 
-// =============================================================
-// Export the DB connection
-// =============================================================
+    db.all("PRAGMA table_info(messages);", (err, columns) => {
+      if (err) {
+        console.error("❌ Could not fetch columns:", err.message);
+        return;
+      }
+
+      const hasColumn = columns.some((c) => c.name === "body_original");
+
+      if (!hasColumn) {
+        console.log("⚙️ Adding missing column: body_original...");
+        db.run(`ALTER TABLE messages ADD COLUMN body_original TEXT;`, (err2) => {
+          if (err2) console.error("❌ Migration failed:", err2.message);
+          else console.log("✅ Column body_original added successfully.");
+        });
+      } else {
+        console.log("✅ Column body_original already exists.");
+      }
+    });
+  }
+);
+
+// Export
 export default db;
