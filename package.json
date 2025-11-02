@@ -1,25 +1,36 @@
 {
   "name": "quantina-chat-server",
   "version": "1.1.0",
-  "description": "Quantina Messenger Backend with voice + file + translation",
-  "type": "module",
+  "description": "Quantina Chat backend server with Express, Socket.IO, and SQLite support.",
   "main": "index.mjs",
+  "type": "module",
   "scripts": {
     "start": "node index.mjs",
-    "postinstall": "npm rebuild sqlite3 --build-from-source"
+    "dev": "nodemon index.mjs"
   },
-  "author": "QuantinaSaaS",
-  "license": "ISC",
+  "engines": {
+    "node": ">=22.x"
+  },
   "dependencies": {
-    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
+    "dotenv": "^16.6.1",
     "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^1.4.5-lts.1",
-    "openai": "^4.60.0",
+    "openai": "^6.7.0",
     "socket.io": "^4.8.1",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.6"
-  }
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "keywords": [
+    "quantina",
+    "chat",
+    "server",
+    "socket.io",
+    "express",
+    "sqlite",
+    "railway"
+  ],
+  "author": "Quantina Core",
+  "license": "MIT"
 }

@@ -155,6 +155,17 @@ await db.exec(`
 `);
 
 console.log("✅ SQLite tables are ready");
+import fs from "fs";
+
+// 🚨 TEMP FIX: Delete old SQLite file on boot if schema outdated
+const dbPath = path.join(__dirname, "quantina_chat.sqlite");
+if (fs.existsSync(dbPath)) {
+  const dbContent = fs.readFileSync(dbPath, "utf-8");
+  if (!dbContent.includes("body_original")) {
+    console.log("⚙️ Removing outdated quantina_chat.sqlite...");
+    fs.unlinkSync(dbPath);
+  }
+}
 
 // ---------------------------------------------------------
 // Helpers: DB + usage
