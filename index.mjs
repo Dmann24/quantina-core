@@ -1,19 +1,6 @@
 // =========================================================
-// Quantina Messenger Core (Railway Build v1.0 FINAL)
+// Quantina Messenger Core (Railway Build v1.1)
 // Express + Socket.IO + SQLite + OpenAI (gpt-4o-mini)
-// =========================================================
-//
-// This server does:
-//  - Runs 24/7 on Railway
-//  - Handles real-time peer-to-peer messaging via Socket.IO
-//  - Auto-translates between users' preferred languages
-//  - Saves chat history, language prefs, and plan tier
-//
-// Env needed on Railway:
-//   OPENAI_API_KEY=sk-xxxx
-//   PORT=4001
-//   NODE_ENV=production
-//
 // =========================================================
 
 import express from "express";
@@ -23,6 +10,7 @@ import cors from "cors";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import OpenAI from "openai";
@@ -33,15 +21,14 @@ import OpenAI from "openai";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env locally; Railway injects env automatically
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 // ---------------------------------------------------------
 // Core constants
 // ---------------------------------------------------------
 const PORT = process.env.PORT || 4001;
-const DEFAULT_LANG = "English"; // fallback language for new users
-const DEFAULT_PLAN = "FREE";    // FREE / PRO / ENTERPRISE (future billing)
+const DEFAULT_LANG = "English";
+const DEFAULT_PLAN = "FREE";
 const MODEL_TRANSLATE = "gpt-4o-mini";
 
 if (!process.env.OPENAI_API_KEY) {
@@ -49,47 +36,8 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 // ---------------------------------------------------------
-// Express app + middleware
+// 🧹 Cleanup outdated SQLite schema (auto fix)
 // ---------------------------------------------------------
-const app = express();
-
-// ✅ Serve static files like JSON, CSS, JS, etc.
-app.use(express.static(path.join(__dirname, "public")));
-
-// ✅ Also serve same folder under /assets path
-app.use("/assets", express.static(path.join(__dirname, "public")));
-
-// ✅ Serve the langs directory explicitly for Railway
-app.use("/assets/langs", express.static(path.join(__dirname, "public", "langs")));
-
-app.use(cors());
-app.use(express.json());
-
-// ---------------------------------------------------------
-// Create HTTP server + Socket.IO
-// ---------------------------------------------------------
-const server = http.createServer(app);
-
-const io = new Server(server, {
-  cors: {
-    origin: "*", // tighten later to https://yourdomain.com
-    methods: ["GET", "POST"],
-  },
-});
-
-// ---------------------------------------------------------
-// OpenAI client
-// ---------------------------------------------------------
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// ---------------------------------------------------------
-// SQLite Setup
-// ---------------------------------------------------------
-import fs from "fs";
-
-// 🚨 Force schema reset if old DB is missing new columns
 const dbPath = path.join(__dirname, "quantina_chat.sqlite");
 if (fs.existsSync(dbPath)) {
   const dbText = fs.readFileSync(dbPath, "utf8");
@@ -99,12 +47,37 @@ if (fs.existsSync(dbPath)) {
   }
 }
 
+// ---------------------------------------------------------
+// Express + HTTP + Socket.IO setup
+// ---------------------------------------------------------
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Serve static files
+app.use(express.static(path.join(__dirname, "public")));
+app.use("/assets", express.static(path.join(__dirname, "public")));
+app.use("/assets/langs", express.static(path.join(__dirname, "public", "langs")));
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] },
+});
+
+// ---------------------------------------------------------
+// OpenAI client
+// ---------------------------------------------------------
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ---------------------------------------------------------
+// SQLite Setup
+// ---------------------------------------------------------
 const db = await open({
-  filename: path.join(__dirname, "quantina_chat.sqlite"),
+  filename: dbPath,
   driver: sqlite3.Database,
 });
 
-// messages table
+// ✅ Create necessary tables
 await db.exec(`
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,27 +91,6 @@ await db.exec(`
   );
 `);
 
-// ✅ Migration: ensure all new columns exist even on older DBs
-const alterColumns = [
-  { name: "body_original", type: "TEXT" },
-  { name: "body_translated", type: "TEXT" },
-  { name: "detected_language", type: "TEXT" },
-  { name: "receiver_language", type: "TEXT" },
-  { name: "mode", type: "TEXT" }
-];
-
-for (const col of alterColumns) {
-  try {
-    await db.run(`ALTER TABLE messages ADD COLUMN ${col.name} ${col.type}`);
-    console.log(`🧩 Added missing column: ${col.name}`);
-  } catch (err) {
-    if (!err.message.includes("duplicate column")) {
-      console.error(`⚠️ Migration error for ${col.name}:`, err.message);
-    }
-  }
-}
-
-// user_prefs table: stores language pref per user
 await db.exec(`
   CREATE TABLE IF NOT EXISTS user_prefs (
     user_id TEXT PRIMARY KEY,
@@ -146,16 +98,6 @@ await db.exec(`
   );
 `);
 
-
-// user_prefs table: stores language pref per user
-await db.exec(`
-  CREATE TABLE IF NOT EXISTS user_prefs (
-    user_id TEXT PRIMARY KEY,
-    preferred_language TEXT DEFAULT '${DEFAULT_LANG}'
-  );
-`);
-
-// plans table: stores plan tier + usage for throttling / upsell
 await db.exec(`
   CREATE TABLE IF NOT EXISTS plans (
     user_id TEXT PRIMARY KEY,
@@ -167,359 +109,146 @@ await db.exec(`
 `);
 
 console.log("✅ SQLite tables are ready");
-import fs from "fs";
-
-// 🚨 TEMP FIX: Delete old SQLite file on boot if schema outdated
-const dbPath = path.join(__dirname, "quantina_chat.sqlite");
-if (fs.existsSync(dbPath)) {
-  const dbContent = fs.readFileSync(dbPath, "utf-8");
-  if (!dbContent.includes("body_original")) {
-    console.log("⚙️ Removing outdated quantina_chat.sqlite...");
-    fs.unlinkSync(dbPath);
-  }
-}
 
 // ---------------------------------------------------------
-// Helpers: DB + usage
+// Helpers: DB access
 // ---------------------------------------------------------
 async function getUserPreferredLanguage(userId) {
-  const row = await db.get(
-    "SELECT preferred_language FROM user_prefs WHERE user_id = ?",
-    [userId]
-  );
+  const row = await db.get("SELECT preferred_language FROM user_prefs WHERE user_id = ?", [userId]);
   if (row && row.preferred_language) return row.preferred_language;
 
-  // no row -> insert default
-  await db.run(
-    "INSERT OR REPLACE INTO user_prefs (user_id, preferred_language) VALUES (?, ?)",
-    [userId, DEFAULT_LANG]
-  );
+  await db.run("INSERT OR REPLACE INTO user_prefs (user_id, preferred_language) VALUES (?, ?)", [
+    userId,
+    DEFAULT_LANG,
+  ]);
   return DEFAULT_LANG;
 }
 
 async function setUserPreferredLanguage(userId, lang) {
-  await db.run(
-    "INSERT OR REPLACE INTO user_prefs (user_id, preferred_language) VALUES (?, ?)",
-    [userId, lang]
-  );
+  await db.run("INSERT OR REPLACE INTO user_prefs (user_id, preferred_language) VALUES (?, ?)", [
+    userId,
+    lang,
+  ]);
 }
 
 async function getUserPlan(userId) {
-  const row = await db.get(
-    "SELECT plan, messages_used, limit_per_month, renewed_at FROM plans WHERE user_id = ?",
-    [userId]
-  );
-
+  const row = await db.get("SELECT plan, messages_used, limit_per_month, renewed_at FROM plans WHERE user_id = ?", [
+    userId,
+  ]);
   if (row) return row;
 
-  // create default if missing
   await db.run(
     "INSERT OR REPLACE INTO plans (user_id, plan, messages_used, limit_per_month) VALUES (?, ?, ?, ?)",
     [userId, DEFAULT_PLAN, 0, 500]
   );
 
-  return {
-    plan: DEFAULT_PLAN,
-    messages_used: 0,
-    limit_per_month: 500,
-    renewed_at: new Date().toISOString(),
-  };
+  return { plan: DEFAULT_PLAN, messages_used: 0, limit_per_month: 500, renewed_at: new Date().toISOString() };
 }
 
 async function incrementUserUsage(userId) {
-  await db.run(
-    "UPDATE plans SET messages_used = messages_used + 1 WHERE user_id = ?",
-    [userId]
-  );
+  await db.run("UPDATE plans SET messages_used = messages_used + 1 WHERE user_id = ?", [userId]);
 }
 
 // ---------------------------------------------------------
-// Helpers: AI Language Detection + Translation
+// Helpers: AI Detection + Translation
 // ---------------------------------------------------------
-
-// 1. Detect language of incoming text
 async function detectLanguageOfText(text) {
   if (!text || text.trim().length === 0) return "Unknown";
 
   const completion = await openai.chat.completions.create({
     model: MODEL_TRANSLATE,
     messages: [
-      {
-        role: "system",
-        content:
-          "Detect the language of the user's message. Reply with only the language name (e.g. 'English', 'Punjabi', 'Russian').",
-      },
+      { role: "system", content: "Detect the language name only (English, Punjabi, French, etc.)" },
       { role: "user", content: text },
     ],
   });
 
-  const guess =
-    completion?.choices?.[0]?.message?.content?.trim() || "Unknown";
-  return guess;
+  return completion?.choices?.[0]?.message?.content?.trim() || "Unknown";
 }
 
-// 2. Translate text to receiver's preferred language (if needed)
 async function translateTextIfNeeded(originalText, fromLang, toLang) {
-  if (!originalText || originalText.trim() === "") {
-    return "(empty message)";
-  }
-
-  if (
-    !fromLang ||
-    !toLang ||
-    fromLang.toLowerCase() === toLang.toLowerCase()
-  ) {
-    // No translation needed
-    return originalText;
-  }
+  if (!originalText.trim()) return "(empty message)";
+  if (fromLang.toLowerCase() === toLang.toLowerCase()) return originalText;
 
   const translation = await openai.chat.completions.create({
     model: MODEL_TRANSLATE,
     messages: [
-      {
-        role: "system",
-        content: `You are a live chat translator. Translate from ${fromLang} to ${toLang}. Keep tone natural, casual, and respectful.`,
-      },
+      { role: "system", content: `Translate from ${fromLang} to ${toLang} naturally.` },
       { role: "user", content: originalText },
     ],
   });
 
-  return (
-    translation?.choices?.[0]?.message?.content?.trim() ||
-    originalText ||
-    ""
-  );
+  return translation?.choices?.[0]?.message?.content?.trim() || originalText;
 }
 
-// 3. Full message pipeline: detect, translate, save, bump usage
 async function processPeerMessage({ senderId, receiverId, rawText }) {
-  // a) detect sender language
   const detectedLang = await detectLanguageOfText(rawText);
+  const receiverLang = await getUserPreferredLanguage(receiverId);
+  const translatedText = await translateTextIfNeeded(rawText, detectedLang, receiverLang);
 
-  // b) lookup receiver's preferred language
-  const receiverPrefLang = await getUserPreferredLanguage(receiverId);
-
-  // c) translate to receiver's language (if needed)
-  const translatedText = await translateTextIfNeeded(
-    rawText,
-    detectedLang,
-    receiverPrefLang
-  );
-
-  // d) save to DB
   const timestamp = new Date().toISOString();
 
   await db.run(
-    `INSERT INTO messages
-      (sender_id, receiver_id, body_original, body_translated, detected_language, receiver_language, created_at)
+    `INSERT INTO messages (sender_id, receiver_id, body_original, body_translated, detected_language, receiver_language, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      senderId,
-      receiverId,
-      rawText,
-      translatedText,
-      detectedLang,
-      receiverPrefLang,
-      timestamp,
-    ]
+    [senderId, receiverId, rawText, translatedText, detectedLang, receiverLang, timestamp]
   );
 
-  // e) bump usage
-  await getUserPlan(senderId);        // ensure row exists
-  await incrementUserUsage(senderId); // increment
-
-  return {
-    body_original: rawText,
-    body_translated: translatedText,
-    detected_language: detectedLang,
-    receiver_language: receiverPrefLang,
-    created_at: timestamp,
-  };
+  await incrementUserUsage(senderId);
+  return { body_original: rawText, body_translated: translatedText, detected_language: detectedLang, receiver_language: receiverLang, created_at: timestamp };
 }
 
 // ---------------------------------------------------------
 // REST API ROUTES
 // ---------------------------------------------------------
+app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
-// Basic health check
-app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    service: "Quantina Core",
-    time: new Date().toISOString(),
-  });
-});
-
-// Return last ~50 messages (for debug / bootstrapping chat history)
-app.get("/api/messages", async (req, res) => {
-  const rows = await db.all(
-    "SELECT * FROM messages ORDER BY id DESC LIMIT 50"
-  );
-  res.json(rows.reverse());
-});
-
-// Get user language pref
-// GET /api/user/lang?user_id=abc
-app.get("/api/user/lang", async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) {
-    return res.status(400).json({ error: "Missing user_id" });
-  }
-  const lang = await getUserPreferredLanguage(user_id);
-  res.json({ user_id, preferred_language: lang });
-});
-
-// Update user language pref
-// PATCH /api/user/lang  { user_id, preferred_language }
-app.patch("/api/user/lang", async (req, res) => {
-  const { user_id, preferred_language } = req.body;
-  if (!user_id || !preferred_language) {
-    return res
-      .status(400)
-      .json({ error: "user_id and preferred_language required" });
-  }
-  await setUserPreferredLanguage(user_id, preferred_language);
-  res.json({ ok: true, user_id, preferred_language });
-});
-
-// Get plan status / usage
-// GET /api/user/plan?user_id=abc
-app.get("/api/user/plan", async (req, res) => {
-  const { user_id } = req.query;
-  if (!user_id) {
-    return res.status(400).json({ error: "Missing user_id" });
-  }
-  const plan = await getUserPlan(user_id);
-  res.json({ user_id, ...plan });
-});
-
-// Manual text-based peer message translation (REST fallback)
-// POST /api/peer-message
-// body: { sender_id, receiver_id, text }
 app.post("/api/peer-message", async (req, res) => {
   try {
     const { sender_id, receiver_id, text } = req.body;
+    if (!sender_id || !receiver_id || !text)
+      return res.status(400).json({ success: false, error: "Missing sender_id, receiver_id or text" });
 
-    if (!sender_id || !receiver_id || !text) {
-      return res.status(400).json({
-        success: false,
-        error: "sender_id, receiver_id, and text are required",
-      });
-    }
-
-    const processed = await processPeerMessage({
-      senderId: sender_id,
-      receiverId: receiver_id,
-      rawText: text,
-    });
-
-    res.json({
-      success: true,
-      ...processed,
-    });
+    const result = await processPeerMessage({ senderId: sender_id, receiverId: receiver_id, rawText: text });
+    res.json({ success: true, ...result });
   } catch (err) {
-    console.error("❌ /api/peer-message error:", err.message);
-    res.status(500).json({
-      success: false,
-      error: err.message || "Internal server error",
-    });
+    console.error("❌ /api/peer-message:", err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // ---------------------------------------------------------
-// SOCKET.IO: REALTIME P2P MESSAGING
+// SOCKET.IO Realtime Messaging
 // ---------------------------------------------------------
-//
-// Frontend usage example:
-//
-// const socket = io("https://quantina-core-production.up.railway.app", {
-//   auth: { token: "user123" } // <- how we identify that user
-// });
-//
-// socket.emit("send_message", {
-//   fromUserId: "user123",
-//   toUserId:   "user999",
-//   body:       "ਸਤ ਸ੍ਰੀ ਅਕਾਲ ਜੀ"
-// });
-//
-// socket.on("receive_message", (msg) => {...});
-//
-// ---------------------------------------------------------
-
 io.on("connection", (socket) => {
-  // Identify this user
-  const rawToken = socket.handshake.auth?.token;
-  const userId = rawToken || "guest_" + socket.id;
-
+  const userId = socket.handshake.auth?.token || "guest_" + socket.id;
   console.log(`🟢 Socket connected: ${userId}`);
 
-  // Ensure language pref + plan rows exist
   getUserPreferredLanguage(userId).catch(() => {});
   getUserPlan(userId).catch(() => {});
 
-  // Join a private room with their ID
   socket.join(userId);
 
-  // Incoming messages from this user
   socket.on("send_message", async (payload) => {
     try {
       const { fromUserId, toUserId, body } = payload || {};
+      if (!fromUserId || !toUserId || !body) return;
 
-      if (!fromUserId || !toUserId || !body) {
-        console.warn("⚠️ Invalid send_message payload:", payload);
-        return;
-      }
-
-      // Translate, store, usage billing
-      const processed = await processPeerMessage({
-        senderId: fromUserId,
-        receiverId: toUserId,
-        rawText: body,
-      });
-
-      // Deliver translated message to receiver
-      io.to(toUserId).emit("receive_message", {
-        sender_id: fromUserId,
-        body: processed.body_translated,
-        created_at: processed.created_at,
-        detected_language: processed.detected_language,
-        receiver_language: processed.receiver_language,
-        original_text: processed.body_original,
-      });
-
-      // Confirm back to sender
-      socket.emit("message_sent", {
-        to: toUserId,
-        body_original: processed.body_original,
-        body_translated: processed.body_translated,
-        created_at: processed.created_at,
-      });
+      const processed = await processPeerMessage({ senderId: fromUserId, receiverId: toUserId, rawText: body });
+      io.to(toUserId).emit("receive_message", processed);
+      socket.emit("message_sent", processed);
     } catch (err) {
-      console.error("❌ Error in send_message socket handler:", err.message);
-      socket.emit("message_error", {
-        error: err.message || "Failed to send message",
-      });
+      socket.emit("message_error", { error: err.message });
     }
   });
 
-  socket.on("disconnect", () => {
-    console.log(`🔴 Socket disconnected: ${userId}`);
-  });
+  socket.on("disconnect", () => console.log(`🔴 Socket disconnected: ${userId}`));
 });
 
 // ---------------------------------------------------------
-// ROOT "/" ROUTE (simple fallback / health page for humans)
-// ---------------------------------------------------------
-// Note: We ALREADY mounted static above, so if /public/index.html exists
-// it'll be served BEFORE this .get("/") runs. This is just a fallback.
-app.get("/", (req, res) => {
-  res.send("🚀 Quantina Core API & WebSocket server is running.");
-});
-
-// ---------------------------------------------------------
-// START SERVER
+// Start Server
 // ---------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`🚀 Quantina Core live on port ${PORT}`);
-  console.log(`🌐 Ready for WebSocket + REST usage`);
+  console.log(`🌐 API: https://quantina-core-production.up.railway.app/api/peer-message`);
 });
