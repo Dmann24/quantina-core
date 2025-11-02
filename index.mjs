@@ -87,6 +87,18 @@ const openai = new OpenAI({
 // ---------------------------------------------------------
 // SQLite Setup
 // ---------------------------------------------------------
+import fs from "fs";
+
+// 🚨 Force schema reset if old DB is missing new columns
+const dbPath = path.join(__dirname, "quantina_chat.sqlite");
+if (fs.existsSync(dbPath)) {
+  const dbText = fs.readFileSync(dbPath, "utf8");
+  if (!dbText.includes("body_original")) {
+    console.log("🧹 Old DB schema detected — deleting quantina_chat.sqlite...");
+    fs.unlinkSync(dbPath);
+  }
+}
+
 const db = await open({
   filename: path.join(__dirname, "quantina_chat.sqlite"),
   driver: sqlite3.Database,
