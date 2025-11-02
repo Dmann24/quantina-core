@@ -3,5 +3,6 @@ uploads/
 quantina_chat.sqlite
 quantina.db
 node_modules/
+
+# Allow this specific JSON to be deployed to Railway
 !public/langs/quantina_languages.json
-.env
