@@ -141,3 +141,36 @@ app.get("/", (req, res) => {
 server.listen(PORT, () => {
   console.log(`🚀 Quantina Messenger server running on http://localhost:${PORT}`);
 });
+import sqlite3 from "sqlite3";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// SQLite DB path
+const dbPath = path.join(__dirname, "quantina.db");
+const db = new sqlite3.Database(dbPath);
+
+// ✅ Create messages table (if it doesn’t exist)
+db.run(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id TEXT,
+    receiver_id TEXT,
+    text TEXT,
+    mode TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// ✅ Try to add missing column if not exists
+db.run(`ALTER TABLE messages ADD COLUMN body_original TEXT;`, (err) => {
+  if (err && !err.message.includes("duplicate column name")) {
+    console.log("⚠️ Schema migration error:", err.message);
+  } else {
+    console.log("✅ Column body_original verified or added.");
+  }
+});
+
+export default db;
