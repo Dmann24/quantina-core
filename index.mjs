@@ -53,12 +53,14 @@ if (!process.env.OPENAI_API_KEY) {
 // ---------------------------------------------------------
 const app = express();
 
-// serve static files from /public for normal paths
+// ✅ Serve static files like JSON, CSS, JS, etc.
 app.use(express.static(path.join(__dirname, "public")));
 
-// ALSO serve that same folder under /assets so the widget can call
-// https://quantina-core-production.up.railway.app/assets/langs/quantina_languages.json
+// ✅ Also serve same folder under /assets path
 app.use("/assets", express.static(path.join(__dirname, "public")));
+
+// ✅ Serve the langs directory explicitly for Railway
+app.use("/assets/langs", express.static(path.join(__dirname, "public", "langs")));
 
 app.use(cors());
 app.use(express.json());
