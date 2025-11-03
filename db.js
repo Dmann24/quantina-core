@@ -25,13 +25,16 @@ db.run(`
     receiver_id TEXT,
     text TEXT,
     mode TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    body_original TEXT,
+timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+	
   )
 `);
 db.all("PRAGMA table_info(messages);", (err, cols) => {
   if (err) console.error(err);
   else console.log("📋 Columns in messages:", cols.map(c => c.name));
 });
+
 
 // 2️⃣ Check if the body_original column exists
 db.get(
