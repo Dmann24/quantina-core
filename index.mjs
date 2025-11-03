@@ -15,6 +15,28 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 
+import fs from "fs";
+import sqlite3 from "sqlite3";
+import dotenv from "dotenv";
+dotenv.config();
+
+console.log("=== 🧠 Quantina Diagnostic Start ===");
+console.log("📦 Current Directory:", process.cwd());
+console.log("🌍 Environment Variables:", Object.keys(process.env));
+console.log("🔑 OpenAI Key Present:", !!process.env.OPENAI_API_KEY);
+console.log("📄 Files in directory:", fs.readdirSync("."));
+
+const db = new sqlite3.Database("quantina.db", (err) => {
+  if (err) return console.error("❌ SQLite Error:", err.message);
+  console.log("✅ SQLite database found and opened successfully.");
+  db.all("SELECT name FROM sqlite_master WHERE type='table';", (err, rows) => {
+    if (err) console.error("❌ Table read error:", err);
+    else console.log("📋 Tables:", rows.map(r => r.name));
+  });
+});
+
+console.log("=== ✅ Diagnostic Complete ===");
+
 // ---------------------------------------------------------
 // Path + ENV setup
 // ---------------------------------------------------------
