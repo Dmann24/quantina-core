@@ -14,6 +14,8 @@ const db = new sqlite3.Database(dbPath, (err) => {
   if (err) console.error("❌ SQLite connect failed:", err.message);
   else console.log("✅ SQLite connected:", dbPath);
 });
+console.log("🧭 Running on Railway:", process.env.RAILWAY_ENVIRONMENT || "local");
+console.log("📁 Using database path:", dbPath);
 
 // 1️⃣ Ensure base table exists
 db.run(`
