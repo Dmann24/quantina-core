@@ -15,10 +15,8 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 
-
-import sqlite3 from "sqlite3";
-import dotenv from "dotenv";
 dotenv.config();
+
 
 console.log("=== 🧠 Quantina Diagnostic Start ===");
 console.log("📦 Current Directory:", process.cwd());
