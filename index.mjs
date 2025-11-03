@@ -1,5 +1,5 @@
 // =========================================================
-// Quantina Messenger Core (Railway Build v1.2 CLEAN)
+// Quantina Messenger Core (Railway Build v1.1 Clean Build)
 // Express + Socket.IO + SQLite + OpenAI (gpt-4o-mini)
 // =========================================================
 
@@ -15,11 +15,11 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 
+// ---------------------------------------------------------
+// 🧩 Environment + Setup
+// ---------------------------------------------------------
 dotenv.config();
 
-// ---------------------------------------------------------
-// 🧠 Startup Diagnostic
-// ---------------------------------------------------------
 console.log("=== 🧠 Quantina Diagnostic Start ===");
 console.log("📦 Current Directory:", process.cwd());
 console.log("🌍 Environment Variables:", Object.keys(process.env));
@@ -32,6 +32,7 @@ console.log("=== ✅ Diagnostic Complete ===");
 // ---------------------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 // ---------------------------------------------------------
@@ -49,11 +50,11 @@ if (!process.env.OPENAI_API_KEY) {
 // ---------------------------------------------------------
 // 🧹 Cleanup outdated SQLite schema (auto fix)
 // ---------------------------------------------------------
-const dbPath = path.join(__dirname, "quantina.db");
+const dbPath = path.join(__dirname, "quantina_chat.sqlite");
 if (fs.existsSync(dbPath)) {
   const dbText = fs.readFileSync(dbPath, "utf8");
   if (!dbText.includes("body_original")) {
-    console.log("🧹 Old DB schema detected — deleting quantina.db...");
+    console.log("🧹 Old DB schema detected — deleting quantina_chat.sqlite...");
     fs.unlinkSync(dbPath);
   }
 }
@@ -81,7 +82,7 @@ const io = new Server(server, {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ---------------------------------------------------------
-// SQLite Setup (Single Declaration ✅)
+// SQLite Setup (✅ This is the only db instance now)
 // ---------------------------------------------------------
 const db = await open({
   filename: dbPath,
@@ -120,6 +121,7 @@ await db.exec(`
 `);
 
 console.log("✅ SQLite tables are ready");
+
 
 // ---------------------------------------------------------
 // Helpers: DB access
