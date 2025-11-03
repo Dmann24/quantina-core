@@ -1,5 +1,5 @@
 // =========================================================
-// Quantina Messenger Core (Railway Build v1.1)
+// Quantina Messenger Core (Railway Build v1.2 CLEAN)
 // Express + Socket.IO + SQLite + OpenAI (gpt-4o-mini)
 // =========================================================
 
@@ -17,22 +17,14 @@ import OpenAI from "openai";
 
 dotenv.config();
 
-
+// ---------------------------------------------------------
+// 🧠 Startup Diagnostic
+// ---------------------------------------------------------
 console.log("=== 🧠 Quantina Diagnostic Start ===");
 console.log("📦 Current Directory:", process.cwd());
 console.log("🌍 Environment Variables:", Object.keys(process.env));
 console.log("🔑 OpenAI Key Present:", !!process.env.OPENAI_API_KEY);
 console.log("📄 Files in directory:", fs.readdirSync("."));
-
-const db = new sqlite3.Database("quantina.db", (err) => {
-  if (err) return console.error("❌ SQLite Error:", err.message);
-  console.log("✅ SQLite database found and opened successfully.");
-  db.all("SELECT name FROM sqlite_master WHERE type='table';", (err, rows) => {
-    if (err) console.error("❌ Table read error:", err);
-    else console.log("📋 Tables:", rows.map(r => r.name));
-  });
-});
-
 console.log("=== ✅ Diagnostic Complete ===");
 
 // ---------------------------------------------------------
@@ -40,7 +32,6 @@ console.log("=== ✅ Diagnostic Complete ===");
 // ---------------------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 // ---------------------------------------------------------
@@ -58,11 +49,11 @@ if (!process.env.OPENAI_API_KEY) {
 // ---------------------------------------------------------
 // 🧹 Cleanup outdated SQLite schema (auto fix)
 // ---------------------------------------------------------
-const dbPath = path.join(__dirname, "quantina_chat.sqlite");
+const dbPath = path.join(__dirname, "quantina.db");
 if (fs.existsSync(dbPath)) {
   const dbText = fs.readFileSync(dbPath, "utf8");
   if (!dbText.includes("body_original")) {
-    console.log("🧹 Old DB schema detected — deleting quantina_chat.sqlite...");
+    console.log("🧹 Old DB schema detected — deleting quantina.db...");
     fs.unlinkSync(dbPath);
   }
 }
@@ -90,7 +81,7 @@ const io = new Server(server, {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ---------------------------------------------------------
-// SQLite Setup
+// SQLite Setup (Single Declaration ✅)
 // ---------------------------------------------------------
 const db = await open({
   filename: dbPath,
@@ -205,7 +196,6 @@ async function processPeerMessage({ senderId, receiverId, rawText }) {
   const detectedLang = await detectLanguageOfText(rawText);
   const receiverLang = await getUserPreferredLanguage(receiverId);
   const translatedText = await translateTextIfNeeded(rawText, detectedLang, receiverLang);
-
   const timestamp = new Date().toISOString();
 
   await db.run(
@@ -272,3 +262,4 @@ server.listen(PORT, () => {
   console.log(`🚀 Quantina Core live on port ${PORT}`);
   console.log(`🌐 API: https://quantina-core-production.up.railway.app/api/peer-message`);
 });
+
