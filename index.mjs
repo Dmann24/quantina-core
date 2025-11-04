@@ -155,9 +155,10 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
 import fetch, { FormData, fileFromSync } from "node-fetch";
 import fs from "fs";
 
+// Native fetch and FormData are already available in Node 18 +
 const formData = new FormData();
 formData.append("model", "gpt-4o-mini-transcribe");
-formData.append("file", fileFromSync(audioPath));
+formData.append("file", new Blob([fs.readFileSync(audioPath)]), "audio.mp3");
 
 const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
   method: "POST",
@@ -176,17 +177,11 @@ if (!response.ok) {
 const transcription = await response.json();
 console.log("✅ Transcription Result:", transcription.text);
 
+// (optional cleanup)
+fs.unlink(audioPath, (err) => {
+  if (err) console.warn("⚠️ Could not delete uploaded file:", err);
+});
 
-
-
-      const text = transcription.text;
-      console.log("✅ Transcribed:", text);
-
-      return res.json({
-        success: true,
-        mode: "voice",
-        transcribed: text,
-      });
     }
 
     // 💬 If text message
