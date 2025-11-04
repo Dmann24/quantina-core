@@ -12,7 +12,9 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
-import fs from "fs/promises";
+import * as fs from "fs";
+import fsPromises from "fs/promises";
+
 
 dotenv.config();
 const app = express();
@@ -92,14 +94,15 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       console.log(`🎤 Voice received from ${sender_id}:`, req.file.path);
 
       const transcription = await openai.audio.transcriptions.create({
-        file: fs.createReadStream(req.file.path),
+        file: fs.createReadStream(req.file.path)
+
         model: "gpt-4o-mini-transcribe",
       });
 
       originalText = transcription.text.trim();
       detectedLang = transcription.language || "Unknown";
-      await fs.unlink(req.file.path).catch(() => {});
-    }
+      await fsPromises.unlink(req.file.path).catch(() => {});
+     }
 
     // ========================================================
     // 💬 Handle text mode
