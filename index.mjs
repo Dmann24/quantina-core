@@ -1,5 +1,5 @@
 // =========================================================
-// Quantina Messenger Core (Railway Build v1.1 Voice Ready)
+// Quantina Messenger Core (Railway Build v1.1 Clean Build)
 // Express + Socket.IO + SQLite + OpenAI (gpt-4o-mini)
 // =========================================================
 
@@ -14,10 +14,9 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import OpenAI from "openai";
-import multer from "multer";
 
 // ---------------------------------------------------------
-// 🧩 Environment + Diagnostics
+// 🧩 Environment + Setup
 // ---------------------------------------------------------
 dotenv.config();
 
@@ -33,6 +32,7 @@ console.log("=== ✅ Diagnostic Complete ===");
 // ---------------------------------------------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
 // ---------------------------------------------------------
@@ -66,14 +66,52 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/assets", express.static(path.join(__dirname, "public")));
 app.use("/assets/langs", express.static(path.join(__dirname, "public", "langs")));
 
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
+// ----------------------------------------------
+// File Upload Setup (for voice tests)
+// ----------------------------------------------
+import multer from "multer";
+const upload = multer({ dest: "uploads/" }); // temporary storage
+
+app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
+  try {
+    if (req.file) {
+      console.log("🎙️ Voice file received:", req.file.path);
+      const audioBuffer = fs.readFileSync(req.file.path);
+
+      const transcription = await openai.audio.transcriptions.create({
+        file: audioBuffer,
+        model: "gpt-4o-mini-transcribe",
+      });
+
+      const text = transcription.text || "(no text)";
+      console.log("✅ Transcribed:", text);
+
+      const result = await processPeerMessage({
+        senderId: req.body.sender_id || "unknown",
+        receiverId: req.body.receiver_id || "unknown",
+        rawText: text,
+      });
+
+      return res.json({
+        success: true,
+        mode: "voice",
+        transcribed: text,
+        ...result,
+      });
+    } else {
+      return res.status(400).json({ success: false, error: "No audio file found" });
+    }
+  } catch (err) {
+    console.error("❌ Voice processing error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
+
 
 // ---------------------------------------------------------
 // OpenAI client
@@ -81,13 +119,14 @@ const io = new Server(server, {
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ---------------------------------------------------------
-// SQLite Setup
+// SQLite Setup (✅ This is the only db instance now)
 // ---------------------------------------------------------
 const db = await open({
   filename: dbPath,
   driver: sqlite3.Database,
 });
 
+// ✅ Create necessary tables
 await db.exec(`
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,8 +159,9 @@ await db.exec(`
 
 console.log("✅ SQLite tables are ready");
 
+
 // ---------------------------------------------------------
-// Helpers: DB + AI Utilities
+// Helpers: DB access
 // ---------------------------------------------------------
 async function getUserPreferredLanguage(userId) {
   const row = await db.get("SELECT preferred_language FROM user_prefs WHERE user_id = ?", [userId]);
@@ -142,10 +182,9 @@ async function setUserPreferredLanguage(userId, lang) {
 }
 
 async function getUserPlan(userId) {
-  const row = await db.get(
-    "SELECT plan, messages_used, limit_per_month, renewed_at FROM plans WHERE user_id = ?",
-    [userId]
-  );
+  const row = await db.get("SELECT plan, messages_used, limit_per_month, renewed_at FROM plans WHERE user_id = ?", [
+    userId,
+  ]);
   if (row) return row;
 
   await db.run(
@@ -160,6 +199,9 @@ async function incrementUserUsage(userId) {
   await db.run("UPDATE plans SET messages_used = messages_used + 1 WHERE user_id = ?", [userId]);
 }
 
+// ---------------------------------------------------------
+// Helpers: AI Detection + Translation
+// ---------------------------------------------------------
 async function detectLanguageOfText(text) {
   if (!text || text.trim().length === 0) return "Unknown";
 
@@ -202,13 +244,7 @@ async function processPeerMessage({ senderId, receiverId, rawText }) {
   );
 
   await incrementUserUsage(senderId);
-  return {
-    body_original: rawText,
-    body_translated: translatedText,
-    detected_language: detectedLang,
-    receiver_language: receiverLang,
-    created_at: timestamp,
-  };
+  return { body_original: rawText, body_translated: translatedText, detected_language: detectedLang, receiver_language: receiverLang, created_at: timestamp };
 }
 
 // ---------------------------------------------------------
@@ -216,7 +252,6 @@ async function processPeerMessage({ senderId, receiverId, rawText }) {
 // ---------------------------------------------------------
 app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
-// 💬 JSON Text Chat
 app.post("/api/peer-message", async (req, res) => {
   try {
     const { sender_id, receiver_id, text } = req.body;
@@ -227,44 +262,6 @@ app.post("/api/peer-message", async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     console.error("❌ /api/peer-message:", err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// 🎙️ Voice Upload Endpoint
-const upload = multer({ dest: "uploads/" });
-
-app.post("/api/peer-message/audio", upload.single("audio"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ success: false, error: "No audio file found" });
-
-    console.log("🎙️ Voice file received:", req.file.path);
-    const audioBuffer = fs.readFileSync(req.file.path);
-
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioBuffer,
-      model: "gpt-4o-mini-transcribe",
-    });
-
-    const text = transcription.text || "";
-    console.log("✅ Transcribed:", text);
-
-    const result = await processPeerMessage({
-      senderId: req.body.sender_id || "unknown",
-      receiverId: req.body.receiver_id || "unknown",
-      rawText: text,
-    });
-
-    fs.unlink(req.file.path, () => {}); // cleanup temp file
-
-    res.json({
-      success: true,
-      mode: "voice",
-      transcribed: text,
-      ...result,
-    });
-  } catch (err) {
-    console.error("❌ Voice processing error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -303,5 +300,5 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
   console.log(`🚀 Quantina Core live on port ${PORT}`);
   console.log(`🌐 API: https://quantina-core-production.up.railway.app/api/peer-message`);
-  console.log(`🎙️ Voice API: https://quantina-core-production.up.railway.app/api/peer-message/audio`);
 });
+
