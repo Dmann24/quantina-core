@@ -1,9 +1,10 @@
 // =============================================================
-// 🌐 Quantina Core AI Translation Relay v2.6
-//  - Supports text + voice (MP3/WAV)
+// 🌐 Quantina Core AI Translation Relay v3.0
+//  - Text + Voice support
 //  - Auto language detection (sender)
-//  - Output-side translation (receiver)
-//  - Whisper + GPT-4o-mini powered
+//  - Dynamic receiver language memory (JSON-based)
+//  - Output-side translation via GPT-4o-mini
+//  - Whisper for speech transcription
 // =============================================================
 
 import express from "express";
@@ -20,12 +21,30 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // =============================================================
+// 📁 Ensure data folder exists
+// =============================================================
+if (!fs.existsSync("data")) fs.mkdirSync("data");
+const USER_FILE = "data/users.json";
+if (!fs.existsSync(USER_FILE)) fs.writeFileSync(USER_FILE, JSON.stringify({}, null, 2));
+
+// =============================================================
 // 🗂️ File Upload Setup (Multer)
 // =============================================================
 const upload = multer({ dest: "uploads/" });
 
 // =============================================================
-// 🧠 Helper: Detect language of a given text
+// 📚 Helper: Load and Save User Language Preferences
+// =============================================================
+function loadUsers() {
+  return JSON.parse(fs.readFileSync(USER_FILE, "utf8"));
+}
+
+function saveUsers(users) {
+  fs.writeFileSync(USER_FILE, JSON.stringify(users, null, 2));
+}
+
+// =============================================================
+// 🧠 Helper: Detect language of text
 // =============================================================
 async function detectLanguage(text) {
   try {
@@ -41,27 +60,23 @@ async function detectLanguage(text) {
           {
             role: "system",
             content:
-              "You are a language detection expert. Identify the language of this text. Respond with only the language name (like English, Punjabi, French, Hindi)."
+              "You are a language detection expert. Identify the language of this text. Respond with only the language name (English, Punjabi, French, etc.)."
           },
-          {
-            role: "user",
-            content: text
-          }
+          { role: "user", content: text }
         ]
       })
     });
 
     const data = await response.json();
-    const language = data?.choices?.[0]?.message?.content?.trim() || "Unknown";
-    return language;
+    return data?.choices?.[0]?.message?.content?.trim() || "Unknown";
   } catch (err) {
-    console.error("❌ Language detection error:", err);
+    console.error("❌ detectLanguage error:", err);
     return "Unknown";
   }
 }
 
 // =============================================================
-// 🧠 Helper: Translate text to target language
+// 🧠 Helper: Translate text to a target language
 // =============================================================
 async function translateText(text, targetLang = "English") {
   try {
@@ -76,27 +91,23 @@ async function translateText(text, targetLang = "English") {
         messages: [
           {
             role: "system",
-            content: `You are a translator. Translate the user's message into ${targetLang}. Return only the translated text.`
+            content: `You are a professional translator. Translate the message into ${targetLang}. Return only the translated text.`
           },
-          {
-            role: "user",
-            content: text
-          }
+          { role: "user", content: text }
         ]
       })
     });
 
     const data = await response.json();
-    const translated = data?.choices?.[0]?.message?.content?.trim() || text;
-    return translated;
+    return data?.choices?.[0]?.message?.content?.trim() || text;
   } catch (err) {
-    console.error("❌ Translation error:", err);
+    console.error("❌ translateText error:", err);
     return text;
   }
 }
 
 // =============================================================
-// 🎙️ Helper: Transcribe Audio (Whisper via GPT-4o-mini-transcribe)
+// 🎙️ Helper: Transcribe Audio using Whisper
 // =============================================================
 async function transcribeAudio(filePath) {
   try {
@@ -122,62 +133,80 @@ async function transcribeAudio(filePath) {
 }
 
 // =============================================================
-// 🔁 POST: /api/peer-message
-// Handles text + voice messages between users
+// 🔁 POST /api/peer-message — Text or Voice Translation Layer
 // =============================================================
 app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
   try {
     const { sender_id, receiver_id, text, mode } = req.body;
     let transcribedText = "";
-    let originalText = text || "";
+    let finalText = text || "";
 
-    // If mode is voice, transcribe the uploaded file
+    // 🔊 Handle voice mode
     if (mode === "voice" && req.file) {
       console.log(`🎤 Voice received from ${sender_id}: ${req.file.path}`);
       transcribedText = await transcribeAudio(req.file.path);
-      fs.unlinkSync(req.file.path); // clean up temp file
+      fs.unlinkSync(req.file.path);
     }
 
-    const finalInput = transcribedText || originalText;
-    const senderLang = await detectLanguage(finalInput);
-    const receiverLang = "English"; // TODO: fetch from DB or user settings
-    const translated = await translateText(finalInput, receiverLang);
+    finalText = transcribedText || finalText;
 
-    console.log(`✅ Message processed (${mode}) from ${sender_id} → ${receiver_id}`);
+    // 🔍 Detect sender language
+    const senderLang = await detectLanguage(finalText);
 
-    return res.json({
+    // 💾 Get receiver's preferred language from memory
+    const users = loadUsers();
+    const receiverLang = users[receiver_id]?.preferred_lang || "English";
+
+    // 🔄 Translate text
+    const translated = await translateText(finalText, receiverLang);
+
+    // 🧭 Save sender language preference
+    users[sender_id] = users[sender_id] || {};
+    users[sender_id].preferred_lang = senderLang;
+    saveUsers(users);
+
+    console.log(`✅ Processed (${mode}) ${sender_id} → ${receiver_id}`);
+
+    res.json({
       success: true,
       sender_language: senderLang,
       receiver_language: receiverLang,
-      original: finalInput,
+      original: finalText,
       translated
     });
   } catch (err) {
     console.error("❌ /api/peer-message failed:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // =============================================================
-// 🌍 GET: Root Route — simple status page
+// 🌍 GET /api/users — View current language memory
+// =============================================================
+app.get("/api/users", (req, res) => {
+  res.json(loadUsers());
+});
+
+// =============================================================
+// 🌐 Root page (status)
 // =============================================================
 app.get("/", (req, res) => {
   res.send(`
     <html>
-      <head><title>Quantina Core Active</title></head>
+      <head><title>Quantina Core v3.0</title></head>
       <body style="font-family:Arial;text-align:center;margin-top:120px;">
-        <h1>🤖 Quantina AI Core Running</h1>
+        <h1>🤖 Quantina Core AI Translation Relay v3.0</h1>
         <p>Status: <b>Online</b></p>
-        <p>Send POST requests to <code>/api/peer-message</code></p>
-        <p>Build v2.6 — Auto-detect + Translation Layer Enabled</p>
+        <p>POST → <code>/api/peer-message</code></p>
+        <p>GET → <code>/api/users</code> (to view memory)</p>
       </body>
     </html>
   `);
 });
 
 // =============================================================
-// 🚀 Start Server
+// 🚀 Start server
 // =============================================================
 app.listen(PORT, () => {
-  console.log(`✅ Quantina AI Relay running on port ${PORT}`);
+  console.log(`✅ Quantina Core AI Relay v3.0 running on port ${PORT}`);
 });
