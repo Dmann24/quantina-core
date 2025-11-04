@@ -1,149 +1,188 @@
-// ===========================================================
-// Quantina Chat Server v1.2 — Stable Voice + Text API
-// ===========================================================
+// ============================================================
+// Quantina Messenger - Multilingual AI Relay (v2.1 FINAL)
+// Author: Quantina Core | Built for Railway + LocalWP Proxy
+// ============================================================
 
 import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import multer from "multer";
-import fs from "node:fs";
-import path from "node:path";
-import { Server } from "socket.io";
 import http from "http";
+import cors from "cors";
+import multer from "multer";
+import { Server } from "socket.io";
+import dotenv from "dotenv";
+import OpenAI from "openai";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
-import OpenAI from "openai";
+import fs from "fs/promises";
 
-// ===========================================================
-// 🌍 Environment Setup
-// ===========================================================
 dotenv.config();
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-  },
+const io = new Server(server, { cors: { origin: "*" } });
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ============================================================
+// 🧠 SQLite Setup
+// ============================================================
+const db = await open({
+  filename: "./quantina.db",
+  driver: sqlite3.Database,
 });
+
+await db.exec(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id TEXT,
+    receiver_id TEXT,
+    mode TEXT,
+    language TEXT,
+    content TEXT,
+    translated TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+await db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    preferred_language TEXT DEFAULT 'English'
+  )
+`);
+
+// ============================================================
+// 📦 File Upload Setup (Multer)
+// ============================================================
+const upload = multer({ dest: "uploads/" });
 app.use(cors());
 app.use(express.json());
 
-// ===========================================================
-// 📂 File Upload (multer)
-// ===========================================================
-const uploadDir = "./uploads";
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-const upload = multer({ dest: uploadDir });
+// ============================================================
+// 🧭 Helper: Translate message if needed
+// ============================================================
+async function translateIfNeeded(text, sourceLang, targetLang) {
+  if (!text || sourceLang === targetLang) return text;
 
-// ===========================================================
-// 💾 SQLite Database
-// ===========================================================
-let db;
-(async () => {
-  db = await open({
-    filename: "./quantina_chat.db",
-    driver: sqlite3.Database,
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `You are a precise translator. Translate from ${sourceLang} to ${targetLang}, keeping tone and meaning intact.`,
+      },
+      { role: "user", content: text },
+    ],
   });
 
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sender_id TEXT,
-      receiver_id TEXT,
-      mode TEXT,
-      content TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  return completion.choices[0]?.message?.content?.trim() || text;
+}
 
-  console.log("✅ SQLite connected & table ready");
-})();
-
-
-// ===========================================================
-// 🤖 OpenAI Client
-// ===========================================================
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-// ===========================================================
-// 📩 API Route: /api/peer-message
-// ===========================================================
+// ============================================================
+// 🗣️ Route: /api/peer-message
+// ============================================================
 app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
   try {
     const { sender_id, receiver_id, mode } = req.body;
+    let originalText = "";
+    let detectedLang = "Unknown";
 
+    // ========================================================
+    // 🎧 Handle voice mode
+    // ========================================================
     if (mode === "voice" && req.file) {
-      console.log("🎧 Voice message received:", req.file.path);
+      console.log(`🎤 Voice received from ${sender_id}:`, req.file.path);
 
-      const audioPath = req.file.path;
-      const formData = new FormData();
-      formData.append("model", "gpt-4o-mini-transcribe");
-      formData.append("file", new Blob([fs.readFileSync(audioPath)]), "audio.mp3");
-
-      const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: formData,
+      const transcription = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(req.file.path),
+        model: "gpt-4o-mini-transcribe",
       });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error("❌ Transcription failed:", errText);
-        throw new Error("Transcription failed");
-      }
+      originalText = transcription.text.trim();
+      detectedLang = transcription.language || "Unknown";
+      await fs.unlink(req.file.path).catch(() => {});
+    }
 
-      const data = await response.json();
-      const transcription = data.text;
-      console.log("✅ Transcription:", transcription);
-
-      await db.run(
-        "INSERT INTO messages (sender_id, receiver_id, mode, content) VALUES (?, ?, ?, ?)",
-        [sender_id, receiver_id, "voice", transcription]
-      );
-
-      fs.unlink(audioPath, (err) => {
-        if (err) console.warn("⚠️ Could not delete temp file:", err);
+    // ========================================================
+    // 💬 Handle text mode
+    // ========================================================
+    if (mode === "text" && req.body.message) {
+      originalText = req.body.message;
+      // detect source language
+      const detection = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Detect the language of this text:" },
+          { role: "user", content: originalText },
+        ],
       });
-
-      io.emit("message", { sender_id, receiver_id, mode: "voice", content: transcription });
-      return res.json({ success: true, message: transcription });
+      detectedLang = detection.choices[0].message.content.trim();
     }
 
-    // 💬 Text Mode
-    if (mode === "text") {
-      const { content } = req.body;
-      if (!content) return res.status(400).json({ success: false, error: "Missing text content" });
+    // ========================================================
+    // 🌍 Fetch receiver preference
+    // ========================================================
+    const receiver = await db.get(
+      "SELECT preferred_language FROM users WHERE id = ?",
+      [receiver_id]
+    );
+    const receiverLang = receiver?.preferred_language || "English";
 
-      await db.run(
-        "INSERT INTO messages (sender_id, receiver_id, mode, content) VALUES (?, ?, ?, ?)",
-        [sender_id, receiver_id, "text", content]
-      );
+    // ========================================================
+    // 🔄 Translate output for receiver
+    // ========================================================
+    const translatedText = await translateIfNeeded(
+      originalText,
+      detectedLang,
+      receiverLang
+    );
 
-      io.emit("message", { sender_id, receiver_id, mode: "text", content });
-      return res.json({ success: true });
-    }
+    // ========================================================
+    // 💾 Save to database
+    // ========================================================
+    await db.run(
+      `INSERT INTO messages (sender_id, receiver_id, mode, language, content, translated)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [sender_id, receiver_id, mode, detectedLang, originalText, translatedText]
+    );
 
-    res.status(400).json({ success: false, error: "Invalid mode or missing audio file" });
+    // ========================================================
+    // 📡 Emit to receiver
+    // ========================================================
+    io.emit("new_message", {
+      sender_id,
+      receiver_id,
+      mode,
+      original: originalText,
+      translated: translatedText,
+      detectedLang,
+      receiverLang,
+    });
+
+    return res.json({
+      success: true,
+      sender_language: detectedLang,
+      receiver_language: receiverLang,
+      original: originalText,
+      translated: translatedText,
+    });
   } catch (err) {
-    console.error("❌ Error in /api/peer-message:", err);
-    res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
+    console.error("❌ /api/peer-message failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 
-// ===========================================================
-// 🔌 Socket.IO Connections
-// ===========================================================
+// ============================================================
+// 🧩 Socket.IO Basic Listener
+// ============================================================
 io.on("connection", (socket) => {
   console.log("⚡ User connected:", socket.id);
-  socket.on("disconnect", () => console.log("🔌 User disconnected:", socket.id));
+  socket.on("disconnect", () => console.log("❌ User disconnected:", socket.id));
 });
 
-// ===========================================================
+// ============================================================
 // 🚀 Start Server
-// ===========================================================
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log(`🚀 Quantina Chat Server running on port ${PORT}`));
+// ============================================================
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => console.log(`✅ Quantina AI Relay running on port ${PORT}`));
