@@ -13,12 +13,14 @@ import fs from "fs";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 dotenv.config();
-
+import FormData from "form-data";
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// ✅ Serve static language directory for chat widget
+app.use("/langs", express.static("langs"));
 
 // =============================================================
 // 📁 Ensure data folder exists
@@ -43,35 +45,33 @@ function saveUsers(users) {
   fs.writeFileSync(USER_FILE, JSON.stringify(users, null, 2));
 }
 
-// =============================================================
-// 🧠 Helper: Detect language of text
-// =============================================================
-async function detectLanguage(text) {
+// 🎙️ Helper: Transcribe Audio (Whisper)
+async function transcribeAudio(filePath) {
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const formData = new FormData();
+    formData.append("file", fs.createReadStream(filePath));
+    formData.append("model", "gpt-4o-mini-transcribe");
+    formData.append("response_format", "json");
+
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        ...formData.getHeaders()
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a language detection expert. Identify the language of this text. Respond with only the language name (English, Punjabi, French, etc.)."
-          },
-          { role: "user", content: text }
-        ]
-      })
+      body: formData
     });
 
     const data = await response.json();
-    return data?.choices?.[0]?.message?.content?.trim() || "Unknown";
+
+    if (!data.text || data.text.trim().length === 0) {
+      console.warn("⚠️ Whisper returned no text — check audio clarity or format");
+    }
+
+    return data.text || "";
   } catch (err) {
-    console.error("❌ detectLanguage error:", err);
-    return "Unknown";
+    console.error("❌ Transcription error:", err);
+    return "";
   }
 }
 
@@ -197,12 +197,14 @@ app.get("/", (req, res) => {
       <body style="font-family:Arial;text-align:center;margin-top:120px;">
         <h1>🤖 Quantina Core AI Translation Relay v3.0</h1>
         <p>Status: <b>Online</b></p>
-        <p>POST → <code>/api/peer-message</code></p>
-        <p>GET → <code>/api/users</code> (to view memory)</p>
+        <p>Send POST requests to <code>/api/peer-message</code></p>
+        <p>GET user memory: <code>/api/users</code></p>
+        <p>Static languages: <code>/langs/quantina_languages.json</code></p>
       </body>
     </html>
   `);
 });
+
 
 // =============================================================
 // 🚀 Start server
