@@ -113,38 +113,56 @@ async function detectLanguage(text) {
 }
 
 // =============================================================
-// 🌍 Helper: Translate text to target language
+// 🌍 Helper: Translate text to target language (Stable)
 // =============================================================
 async function translateText(text, targetLang = "English") {
-  if (!text || text.trim().length === 0)
+  if (!text || text.trim().length === 0) {
     return "It seems there is no message to translate. Please provide text to translate.";
+  }
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
-            content: `You are a professional translator. Translate the following text into ${targetLang}. Return only the translated content.`,
+            content: `You are a multilingual translation engine. Translate the following user text into ${targetLang}. 
+                      Do not repeat the source language. Return only the translated sentence.`
           },
-          { role: "user", content: text },
+          { role: "user", content: text }
         ],
-      }),
+        temperature: 0.2,
+        max_tokens: 150
+      })
     });
+console.log("🗣️ GPT Translation Raw:", JSON.stringify(data, null, 2));
 
     const data = await response.json();
-    return data?.choices?.[0]?.message?.content?.trim() || text;
+
+    if (!data?.choices || !data.choices[0]?.message?.content) {
+      console.warn("⚠️ No translation returned:", data);
+      return text;
+    }
+
+    let translated = data.choices[0].message.content.trim();
+
+    // Clean up artifacts (like model disclaimers)
+    translated = translated.replace(/^["']|["']$/g, "");
+    translated = translated.replace(/^Translated text[:\-]?\s*/i, "");
+
+    return translated || text;
   } catch (err) {
     console.error("❌ translateText error:", err);
     return text;
   }
 }
+
 
 // =============================================================
 // 🔁 POST /api/peer-message — Text or Voice Translation Layer
