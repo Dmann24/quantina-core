@@ -59,67 +59,42 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const upload = multer({ storage });
-// =========================================================
-// 🧠 Detect language + translate via GPT-4o-mini
-// =========================================================
-async function detectAndTranslate(text, receiverLang = "English") {
+
+// ==============================================
+// 🌐 Helper: Translate text using OpenAI GPT-4o-mini
+// ==============================================
+async function translateText(text, targetLang = "English") {
   try {
-    // Step 1: Detect the sender language
-    const detectRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
-            content:
-              "Detect the language of the user's message. Respond with only the language name, e.g., 'Punjabi', 'English', 'French', etc.",
+            content: `You are a multilingual translator. Translate the user's message to ${targetLang}. Return only the translated text.`
           },
-          { role: "user", content: text },
-        ],
-      }),
+          {
+            role: "user",
+            content: text
+          }
+        ]
+      })
     });
 
-    const detectData = await detectRes.json();
-    const senderLang =
-      detectData?.choices?.[0]?.message?.content?.trim() || "Unknown";
-
-    // Step 2: Translate only if needed
-    let translatedText = text;
-    if (senderLang.toLowerCase() !== receiverLang.toLowerCase()) {
-      const transRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: `Translate the following ${senderLang} text into ${receiverLang}.`,
-            },
-            { role: "user", content: text },
-          ],
-        }),
-      });
-
-      const transData = await transRes.json();
-      translatedText =
-        transData?.choices?.[0]?.message?.content?.trim() || text;
-    }
-
-    return { senderLang, translatedText };
+    const data = await response.json();
+    const translated = data?.choices?.[0]?.message?.content?.trim() || text;
+    return translated;
   } catch (err) {
-    console.error("🌐 Language detect/translate error:", err);
-    return { senderLang: "Unknown", translatedText: text };
+    console.error("❌ Translation error:", err);
+    return text; // fallback: return original text if translation fails
   }
 }
+
 
 // =========================================================
 // 🎤 POST /api/peer-message — handle text + voice
