@@ -8,7 +8,7 @@ import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import multer from "multer";
-import fs from "fs";
+import fs from "node:fs";  
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -146,45 +146,39 @@ async function processPeerMessage({ senderId, receiverId, rawText }) {
 // Voice Transcription Route
 // ---------------------------------------------------------
 app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
-  try {
-    // 🎤 If audio present — handle voice mode
-    if (req.file) {
-      console.log("🎙️ Voice file received:", req.file.path);
-      const audioBuffer = fs.readFileSync(req.file.path);
+try {
+  if (req.file) {
+    console.log("🎧 Voice file received:", req.file.path);
 
+    console.log("🎤 Starting voice transcription...");
 
-import fs from "fs";
+    const formData = new FormData();
+    formData.append("model", "gpt-4o-mini-transcribe");
+    formData.append("file", new Blob([fs.readFileSync(req.file.path)]), "audio.mp3");
 
-console.log("🎧 Starting voice transcription...");
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: formData,
+    });
 
-const formData = new FormData();
-formData.append("model", "gpt-4o-mini-transcribe");
-formData.append("file", new Blob([fs.readFileSync(audioPath)]), "audio.mp3");
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("❌ Transcription Error:", err);
+      throw new Error("Failed to transcribe audio");
+    }
 
-const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-  },
-  body: formData,
-});
+    const transcription = await response.json();
+    console.log("✅ Transcription Result:", transcription.text);
 
-if (!response.ok) {
-  const err = await response.text();
-  console.error("❌ Transcription Error:", err);
-  throw new Error("Failed to transcribe audio");
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.warn("⚠️ Could not delete uploaded file:", err);
+    });
+  }
 }
 
-const transcription = await response.json();
-console.log("✅ Transcription Result:", transcription.text);
-
-// optional cleanup
-fs.unlink(audioPath, (err) => {
-  if (err) console.warn("⚠️ Could not delete uploaded file:", err);
-});
-
-
-    }
 
     // 💬 If text message
     const { sender_id, receiver_id, text } = req.body;
