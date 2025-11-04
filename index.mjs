@@ -125,43 +125,39 @@ async function translateText(text, targetLang = "English") {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
+        temperature: 0.3,
         messages: [
           {
             role: "system",
-            content: `You are a multilingual translation engine. Translate the following user text into ${targetLang}. 
-                      Do not repeat the source language. Return only the translated sentence.`
+            content: `You are a strict translator. Always output the translation in ${targetLang}, even if the text appears mixed, unclear, or already translated.`
           },
-          { role: "user", content: text }
-        ],
-        temperature: 0.2,
-        max_tokens: 150
+          {
+            role: "user",
+            content: text
+          }
+        ]
       })
     });
-console.log("🗣️ GPT Translation Raw:", JSON.stringify(data, null, 2));
 
+    // ✅ Always await and define `data` AFTER response resolves
     const data = await response.json();
 
-    if (!data?.choices || !data.choices[0]?.message?.content) {
-      console.warn("⚠️ No translation returned:", data);
+    if (!data || !data.choices || !data.choices[0]?.message?.content) {
+      console.warn("⚠️ No translation content returned from OpenAI.");
       return text;
     }
 
-    let translated = data.choices[0].message.content.trim();
-
-    // Clean up artifacts (like model disclaimers)
-    translated = translated.replace(/^["']|["']$/g, "");
-    translated = translated.replace(/^Translated text[:\-]?\s*/i, "");
-
-    return translated || text;
+    return data.choices[0].message.content.trim();
   } catch (err) {
-    console.error("❌ translateText error:", err);
+    console.error("❌ translateText error:", err.message);
     return text;
   }
 }
+
 
 
 // =============================================================
