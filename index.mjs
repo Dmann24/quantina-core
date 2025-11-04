@@ -154,39 +154,36 @@ async function detectLanguage(text) {
 // 🌍 Translation Layer (GPT-4o-mini)
 // =============================================================
 async function translateText(text, targetLang = "English") {
-  if (!text || text.trim().length === 0)
-    return "No message to translate.";
-
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        temperature: 0.3,
         messages: [
           {
             role: "system",
-            content: `You are a translator. Always output the message in ${targetLang}, even if the input seems mixed or unclear.`
+            content: `You are a professional translator. Translate the message into ${targetLang}. Return only the translated text.`
           },
           { role: "user", content: text }
         ]
       })
     });
 
-    const data = await response.json();
+    const result = await response.json();
+    const translatedText = result?.choices?.[0]?.message?.content?.trim();
 
-    if (!data || !data.choices || !data.choices[0]?.message?.content) {
-      console.warn("⚠️ No translation response — returning original text.");
+    if (!translatedText) {
+      console.warn("⚠️ No translation found, returning original text.");
       return text;
     }
 
-    return data.choices[0].message.content.trim();
+    return translatedText;
   } catch (err) {
-    console.error("❌ translateText error:", err.message);
+    console.error("❌ translateText error:", err);
     return text;
   }
 }
