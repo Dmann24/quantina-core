@@ -104,16 +104,25 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => console.log(`🔴 Socket disconnected: ${userId}`));
 });
 
-// ----------------------------------------------
-// File Upload Setup (for voice tests)
-// ----------------------------------------------
+// ===============================================================
+// ✅ UNIFIED PEER MESSAGE ENDPOINT (Text + Voice modes)
+// ===============================================================
 import multer from "multer";
-const upload = multer({ dest: "uploads/" }); // temporary storage
+const upload = multer({ dest: "uploads/" });
 
 app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
   try {
-    if (req.file) {
-      console.log("🎙️ Voice file received:", req.file.path);
+    const mode = req.body.mode || "text";
+
+    // =======================
+    // 🎙️ VOICE MODE
+    // =======================
+    if (mode === "voice") {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "No audio file found" });
+      }
+
+      console.log("🎧 Received voice file:", req.file.path);
       const audioBuffer = fs.readFileSync(req.file.path);
 
       const transcription = await openai.audio.transcriptions.create({
@@ -121,8 +130,8 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
         model: "gpt-4o-mini-transcribe",
       });
 
-      const text = transcription.text || "(no text)";
-      console.log("✅ Transcribed:", text);
+      const text = transcription.text?.trim() || "(empty)";
+      console.log("🗣️ Transcribed:", text);
 
       const result = await processPeerMessage({
         senderId: req.body.sender_id || "unknown",
@@ -136,14 +145,30 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
         transcribed: text,
         ...result,
       });
-    } else {
-      return res.status(400).json({ success: false, error: "No audio file found" });
     }
+
+    // =======================
+    // 💬 TEXT MODE
+    // =======================
+    const { sender_id, receiver_id, text } = req.body;
+
+    if (!text || !sender_id || !receiver_id) {
+      return res.status(400).json({ success: false, error: "Missing fields" });
+    }
+
+    const result = await processPeerMessage({
+      senderId: sender_id,
+      receiverId: receiver_id,
+      rawText: text,
+    });
+
+    return res.json({ success: true, mode: "text", ...result });
   } catch (err) {
-    console.error("❌ Voice processing error:", err);
+    console.error("❌ Error in peer-message route:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 // ---------------------------------------------------------
