@@ -152,10 +152,11 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       console.log("🎙️ Voice file received:", req.file.path);
       const audioBuffer = fs.readFileSync(req.file.path);
 
-import fetch, { FormData, fileFromSync } from "node-fetch";
+
 import fs from "fs";
 
-// Native fetch and FormData are already available in Node 18 +
+console.log("🎧 Starting voice transcription...");
+
 const formData = new FormData();
 formData.append("model", "gpt-4o-mini-transcribe");
 formData.append("file", new Blob([fs.readFileSync(audioPath)]), "audio.mp3");
@@ -177,10 +178,11 @@ if (!response.ok) {
 const transcription = await response.json();
 console.log("✅ Transcription Result:", transcription.text);
 
-// (optional cleanup)
+// optional cleanup
 fs.unlink(audioPath, (err) => {
   if (err) console.warn("⚠️ Could not delete uploaded file:", err);
 });
+
 
     }
 
