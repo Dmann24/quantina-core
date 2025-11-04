@@ -177,27 +177,11 @@ try {
       if (err) console.warn("⚠️ Could not delete uploaded file:", err);
     });
   }
+} catch (err) {
+  console.error("❌ Transcription block failed:", err);
+  res.status(500).json({ success: false, error: "Audio transcription failed" });
 }
 
-
-    // 💬 If text message
-    const { sender_id, receiver_id, text } = req.body;
-    if (!sender_id || !receiver_id || !text) {
-      return res.status(400).json({ success: false, error: "Missing fields" });
-    }
-
-    const result = await processPeerMessage({
-      senderId: sender_id,
-      receiverId: receiver_id,
-      rawText: text,
-    });
-
-    res.json(result);
-  } catch (err) {
-    console.error("❌ Error in /api/peer-message:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 // ---------------------------------------------------------
 // Health Check
