@@ -11,7 +11,7 @@ import path from "node:path";
 import { Server } from "socket.io";
 import http from "http";
 import sqlite3 from "sqlite3";
-import sqlite from "sqlite";
+import { open } from "sqlite";
 import OpenAI from "openai";
 
 // ===========================================================
@@ -40,10 +40,11 @@ const upload = multer({ dest: uploadDir });
 // ===========================================================
 let db;
 (async () => {
-  db = await sqlite.open({
+  db = await open({
     filename: "./quantina_chat.db",
     driver: sqlite3.Database,
   });
+
   await db.run(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,8 +55,10 @@ let db;
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
   console.log("✅ SQLite connected & table ready");
 })();
+
 
 // ===========================================================
 // 🤖 OpenAI Client
