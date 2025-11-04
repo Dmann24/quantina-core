@@ -59,13 +59,13 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const upload = multer({ storage });
-
 // =========================================================
-// 🧠 Helper: Translate text via GPT-4o-mini
+// 🧠 Detect language + translate via GPT-4o-mini
 // =========================================================
-async function translateText(text, targetLang) {
+async function detectAndTranslate(text, receiverLang = "English") {
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    // Step 1: Detect the sender language
+    const detectRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -76,18 +76,48 @@ async function translateText(text, targetLang) {
         messages: [
           {
             role: "system",
-            content: `You are a translation engine. Translate the user's message to ${targetLang}.`,
+            content:
+              "Detect the language of the user's message. Respond with only the language name, e.g., 'Punjabi', 'English', 'French', etc.",
           },
           { role: "user", content: text },
         ],
       }),
     });
 
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content?.trim() || text;
+    const detectData = await detectRes.json();
+    const senderLang =
+      detectData?.choices?.[0]?.message?.content?.trim() || "Unknown";
+
+    // Step 2: Translate only if needed
+    let translatedText = text;
+    if (senderLang.toLowerCase() !== receiverLang.toLowerCase()) {
+      const transRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: `Translate the following ${senderLang} text into ${receiverLang}.`,
+            },
+            { role: "user", content: text },
+          ],
+        }),
+      });
+
+      const transData = await transRes.json();
+      translatedText =
+        transData?.choices?.[0]?.message?.content?.trim() || text;
+    }
+
+    return { senderLang, translatedText };
   } catch (err) {
-    console.error("Translation Error:", err);
-    return text;
+    console.error("🌐 Language detect/translate error:", err);
+    return { senderLang: "Unknown", translatedText: text };
   }
 }
 
