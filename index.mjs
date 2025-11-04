@@ -152,10 +152,32 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       console.log("🎙️ Voice file received:", req.file.path);
       const audioBuffer = fs.readFileSync(req.file.path);
 
-      const transcription = await openai.audio.transcriptions.create({
-        file: audioBuffer,
-        model: "gpt-4o-mini-transcribe",
-      });
+import FormData from "form-data";
+import fs from "fs";
+import fetch from "node-fetch";
+
+const formData = new FormData();
+formData.append("model", "gpt-4o-mini-transcribe");
+formData.append("file", fs.createReadStream(audioPath));
+
+const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    ...formData.getHeaders(),
+  },
+  body: formData,
+});
+
+if (!response.ok) {
+  const err = await response.text();
+  console.error("❌ Transcription Error:", err);
+  throw new Error("Failed to transcribe audio");
+}
+
+const transcription = await response.json();
+console.log("✅ Transcription Result:", transcription.text);
+
 
       const text = transcription.text;
       console.log("✅ Transcribed:", text);
