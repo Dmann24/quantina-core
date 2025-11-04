@@ -61,9 +61,9 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // ==============================================
-// 🌐 Helper: Translate text using OpenAI GPT-4o-mini
+// 🧠 Helper: Detect the language of input text
 // ==============================================
-async function translateText(text, targetLang = "English") {
+async function detectLanguage(text) {
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -76,7 +76,8 @@ async function translateText(text, targetLang = "English") {
         messages: [
           {
             role: "system",
-            content: `You are a multilingual translator. Translate the user's message to ${targetLang}. Return only the translated text.`
+            content:
+              "You are a language detection expert. Identify the language of the given text. Respond with only the language name, like 'English', 'Punjabi', 'French', 'Hindi'."
           },
           {
             role: "user",
@@ -87,13 +88,14 @@ async function translateText(text, targetLang = "English") {
     });
 
     const data = await response.json();
-    const translated = data?.choices?.[0]?.message?.content?.trim() || text;
-    return translated;
+    const language = data?.choices?.[0]?.message?.content?.trim() || "Unknown";
+    return language;
   } catch (err) {
-    console.error("❌ Translation error:", err);
-    return text; // fallback: return original text if translation fails
+    console.error("❌ Language detection error:", err);
+    return "Unknown";
   }
 }
+
 
 
 // =========================================================
@@ -156,13 +158,14 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
 
     console.log(`✅ Message processed (${mode}) from ${sender_id} → ${receiver_id}`);
 
-    res.json({
-      success: true,
-      sender_language: senderLang,
-      receiver_language: receiverLang,
-      original: originalText,
-      translated: translatedText,
-    });
+   res.json({
+  success: true,
+  sender_language: senderLang,
+  receiver_language: receiverLang,
+  original: transcribedText || text,
+  translated
+});
+
   } catch (err) {
     console.error("❌ /api/peer-message failed:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -182,3 +185,16 @@ io.on("connection", (socket) => {
 // =========================================================
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => console.log(`✅ Quantina AI Relay running on port ${PORT}`));
+// Serve the main frontend if someone visits root URL
+app.get("/", (req, res) => {
+  res.send(`
+    <html>
+      <head><title>Quantina Chat</title></head>
+      <body style="font-family:sans-serif;text-align:center;margin-top:100px;">
+        <h1>🤖 Quantina Core Active</h1>
+        <p>The AI Translation Chat backend is online.</p>
+        <p>Use <b>/api/peer-message</b> via POST to send messages.</p>
+      </body>
+    </html>
+  `);
+});
