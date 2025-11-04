@@ -71,6 +71,39 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use("/assets", express.static(path.join(__dirname, "public")));
 app.use("/assets/langs", express.static(path.join(__dirname, "public", "langs")));
 
+// HTTP + Socket.IO
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] },
+});
+// ---------------------------------------------------------
+// SOCKET.IO Realtime Messaging
+// ---------------------------------------------------------
+io.on("connection", (socket) => {
+  const userId = socket.handshake.auth?.token || "guest_" + socket.id;
+  console.log(`🟢 Socket connected: ${userId}`);
+
+  getUserPreferredLanguage(userId).catch(() => {});
+  getUserPlan(userId).catch(() => {});
+
+  socket.join(userId);
+
+  socket.on("send_message", async (payload) => {
+    try {
+      const { fromUserId, toUserId, body } = payload || {};
+      if (!fromUserId || !toUserId || !body) return;
+
+      const processed = await processPeerMessage({ senderId: fromUserId, receiverId: toUserId, rawText: body });
+      io.to(toUserId).emit("receive_message", processed);
+      socket.emit("message_sent", processed);
+    } catch (err) {
+      socket.emit("message_error", { error: err.message });
+    }
+  });
+
+  socket.on("disconnect", () => console.log(`🔴 Socket disconnected: ${userId}`));
+});
+
 // ----------------------------------------------
 // File Upload Setup (for voice tests)
 // ----------------------------------------------
@@ -266,33 +299,7 @@ app.post("/api/peer-message", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------
-// SOCKET.IO Realtime Messaging
-// ---------------------------------------------------------
-io.on("connection", (socket) => {
-  const userId = socket.handshake.auth?.token || "guest_" + socket.id;
-  console.log(`🟢 Socket connected: ${userId}`);
 
-  getUserPreferredLanguage(userId).catch(() => {});
-  getUserPlan(userId).catch(() => {});
-
-  socket.join(userId);
-
-  socket.on("send_message", async (payload) => {
-    try {
-      const { fromUserId, toUserId, body } = payload || {};
-      if (!fromUserId || !toUserId || !body) return;
-
-      const processed = await processPeerMessage({ senderId: fromUserId, receiverId: toUserId, rawText: body });
-      io.to(toUserId).emit("receive_message", processed);
-      socket.emit("message_sent", processed);
-    } catch (err) {
-      socket.emit("message_error", { error: err.message });
-    }
-  });
-
-  socket.on("disconnect", () => console.log(`🔴 Socket disconnected: ${userId}`));
-});
 
 // ---------------------------------------------------------
 // Start Server
