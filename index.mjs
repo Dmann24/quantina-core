@@ -9,6 +9,7 @@
 // =============================================================
 
 import express from "express";
+import cors from "cors";
 import multer from "multer";
 import fs from "fs";
 import fetch from "node-fetch";
@@ -18,6 +19,16 @@ import { execSync } from "child_process";
 
 dotenv.config();
 const app = express();
+// =============================================================
+// 🛡️ Enable CORS for Frontend Requests
+// =============================================================
+app.use(cors({
+  origin: "*", // allow all origins (for now)
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+
 const PORT = process.env.PORT || 8080;
 
 app.use(express.json());
