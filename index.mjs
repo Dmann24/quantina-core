@@ -283,9 +283,9 @@ app.get("/api/health", (req, res) => {
 // =============================================================
 // 🚀 Start Server
 // =============================================================
-// =============================================================
+// ===================================================
 // ⚡ Quantina Peer-to-Peer Socket Layer
-// =============================================================
+// ===================================================
 io.on("connection", (socket) => {
   console.log(`🟢 Socket connected: ${socket.id}`);
 
@@ -306,7 +306,7 @@ io.on("connection", (socket) => {
     if (targetSocket) {
       targetSocket.emit("receive_message", {
         sender_id: fromUserId,
-        body_translated: body, // For now echo text (later we’ll auto-translate)
+        body_translated: body, // for now just echo text
       });
       socket.emit("message_sent", { success: true });
     } else {
@@ -319,6 +319,10 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, () => console.log(`✅ Quantina Core Live Socket running on port ${PORT}`));
-
+// ===================================================
+// 🚀 Start Express + Socket Server
+// ===================================================
+server.listen(PORT, () => {
+  console.log(`✅ Quantina Core Live Socket running on port ${PORT}`);
 });
+

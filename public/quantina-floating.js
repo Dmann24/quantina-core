@@ -1,88 +1,86 @@
 /* =========================================================
-   Quantina Chat Widget (v5.8.0 Hardwired + Railway Live Core)
+   Quantina Chat Widget (v5.8.1 Live Socket + REST Hybrid)
    ---------------------------------------------------------
-   ✅ Real-time chat with Quantina Core API
-   ✅ Full UI stability: drag, mic, clear, promo, language picker
-   ✅ REST hardwire to /api/peer-message (text + voice)
-   ✅ Socket prepared for future peer-to-peer (commented)
+   ✅ Real-time peer-to-peer via Socket.IO
+   ✅ Full REST fallback to /api/peer-message
+   ✅ Drag, mic, clear, promo, language picker preserved
+   ✅ Auto socket reconnect
    ---------------------------------------------------------
    Backend:
    https://quantina-core-production.up.railway.app
    ========================================================= */
 
 (function () {
-  console.log("🚀 Quantina Chat Widget Loaded v5.8.0 (Hardwired Edition)");
-// ====================================================
-// 🌐 Load Socket.IO Client Script + Initialize Socket
-// ====================================================
-if (typeof io === "undefined") {
-  const script = document.createElement("script");
-  script.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
-  script.onload = () => {
-    console.log("✅ Socket.IO client loaded");
-    initSocket(); // initialize once library is ready
-  };
-  document.head.appendChild(script);
-}
+  console.log("🚀 Quantina Chat Widget Loaded v5.8.1 (Live Socket Edition)");
 
-let socket = null;
-
-// ====================================================
-// ⚡ Socket Initialization Function
-// ====================================================
-function initSocket() {
+  // ====================================================
+  // 🌐 Load Socket.IO Client Script + Initialize Socket
+  // ====================================================
   if (typeof io === "undefined") {
-    console.warn("⚠️ Socket.IO client not yet ready.");
-    return; // ✅ fixed placement for return
+    const script = document.createElement("script");
+    script.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
+    script.onload = () => {
+      console.log("✅ Socket.IO client loaded");
+      initSocket();
+    };
+    document.head.appendChild(script);
   }
 
-  const user = JSON.parse(localStorage.getItem("quantina_user_v5") || "{}");
-  const CORE_BASE = "https://quantina-core-production.up.railway.app";
-
-  socket = io(CORE_BASE, {
-    auth: { token: user.id || "guest_" + Math.random().toString(36).substring(2, 9) },
-    transports: ["websocket"],
-  });
+  let socket = null;
 
   // ====================================================
-  // 🔗 CONNECTION EVENTS
+  // ⚡ Socket Initialization
   // ====================================================
-  socket.on("connect", () => {
-    console.log(`🟢 Connected to Quantina Core via Socket.IO as ${user.id}`);
-  });
-
-  socket.on("disconnect", () => {
-    console.warn("🔴 Socket disconnected from Quantina Core");
-    setTimeout(initSocket, 5000); // 🔁 auto-reconnect every 5s
-  });
-
-  // ====================================================
-  // 💬 MESSAGE HANDLING
-  // ====================================================
-  socket.on("receive_message", (msg) => {
-    try {
-      const text = msg.body_translated || msg.body || "[no text]";
-      if (typeof addMsg === "function") {
-        addMsg(`${msg.sender_id || "peer"}: ${text}`, false);
-      } else {
-        console.warn("⚠️ addMsg not yet available to render:", text);
-      }
-    } catch (err) {
-      console.error("💥 Error rendering incoming message:", err);
+  function initSocket() {
+    if (typeof io === "undefined") {
+      console.warn("⚠️ Socket.IO not ready yet.");
+      return;
     }
-  });
 
-  // ====================================================
-  // 🧪 OPTIONAL TEST PING (for debugging)
-  // ====================================================
-  socket.emit("ping_test", { hello: "from client" });
-}
+    const user = JSON.parse(localStorage.getItem("quantina_user_v5") || "{}");
+    const CORE_BASE =
+      location.hostname === "localhost"
+        ? "http://localhost:4001"
+        : "https://quantina-core-production.up.railway.app";
 
+    socket = io(CORE_BASE, {
+      auth: { token: user.id || "guest_" + Math.random().toString(36).substring(2, 9) },
+      transports: ["websocket"],
+    });
+
+    socket.on("connect", () => {
+      console.log(`🟢 Connected to Quantina Core via Socket.IO as ${user.id}`);
+    });
+
+    socket.on("disconnect", () => {
+      console.warn("🔴 Socket disconnected — retrying...");
+      setTimeout(initSocket, 5000);
+    });
+
+    socket.on("receive_message", (msg) => {
+      try {
+        const text = msg.body_translated || msg.body || "[no text]";
+        if (typeof addMsg === "function") {
+          addMsg(`${msg.sender_id || "peer"}: ${text}`, false);
+        } else {
+          console.warn("⚠️ addMsg not yet available to render:", text);
+        }
+      } catch (err) {
+        console.error("💥 Incoming message error:", err);
+      }
+    });
+
+    // Optional backend ping
+    socket.emit("ping_test", { hello: "from client" });
+  }
 
   // ==============================
   // 🔗 BACKEND ENDPOINTS
   // ==============================
-  const CORE_BASE = "https://quantina-core-production.up.railway.app";
+  const CORE_BASE =
+    location.hostname === "localhost"
+      ? "http://localhost:4001"
+      : "https://quantina-core-production.up.railway.app";
   const CORE_PEER_MSG = `${CORE_BASE}/api/peer-message`;
   const CORE_LANGS = `${CORE_BASE}/langs/quantina_languages.json`;
 
@@ -119,7 +117,6 @@ function initSocket() {
   const LS_LANG = "quantina_lang";
   const LS_PAID = "quantina_paid_subscriber";
   const LS_TRANSLATE = "quantina_translate_enabled";
-  const LS_PROMO_SHOWN = "quantina_promo_shown_v1";
 
   // ---------- USER SESSION ----------
   const colors = ["#007bff", "#28a745", "#ff9800", "#9c27b0", "#00bcd4"];
@@ -141,20 +138,12 @@ function initSocket() {
   }
 
   // ---------- PANEL TOGGLE ----------
-  if (bubble && panel) {
-    bubble.addEventListener("click", () => {
-      panel.classList.toggle("qt-open");
-    });
-  }
-  closeBtn?.addEventListener("click", () => {
-    panel.classList.remove("qt-open");
-  });
+  bubble?.addEventListener("click", () => panel?.classList.toggle("qt-open"));
+  closeBtn?.addEventListener("click", () => panel?.classList.remove("qt-open"));
 
   // ---------- DRAG PANEL ----------
   if (header && panel) {
-    let dragging = false;
-    let sx = 0, sy = 0, sl = 0, st = 0;
-
+    let dragging = false, sx = 0, sy = 0, sl = 0, st = 0;
     header.style.cursor = "grab";
     header.addEventListener("mousedown", (e) => {
       if (e.target.tagName === "BUTTON" || e.target.closest("button")) return;
@@ -166,7 +155,6 @@ function initSocket() {
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     });
-
     function onMove(e) {
       if (!dragging) return;
       panel.style.position = "fixed";
@@ -174,7 +162,6 @@ function initSocket() {
       panel.style.top = st + (e.clientY - sy) + "px";
       panel.style.bottom = "auto"; panel.style.right = "auto";
     }
-
     function onUp() {
       dragging = false;
       header.style.cursor = "grab";
@@ -221,11 +208,23 @@ function initSocket() {
   }
 
   // =====================================================
-  // 🔁 HARDWIRED CORE PIPELINE (REST to /api/peer-message)
+  // 🔁 CORE PIPELINE (REST + Socket Hybrid)
   // =====================================================
   async function sendToCoreAndMaybeReply(userText) {
     const senderId = user.id;
     const receiverId = "peer_001";
+
+    // ⚡ Live Socket Send
+    if (socket && socket.connected) {
+      socket.emit("send_message", {
+        fromUserId: senderId,
+        toUserId: receiverId,
+        body: userText,
+      });
+      console.log("📤 Sent via socket:", userText);
+    }
+
+    // 🔁 REST Fallback
     try {
       const res = await fetch(CORE_PEER_MSG, {
         method: "POST",
@@ -241,17 +240,11 @@ function initSocket() {
       const data = await res.json();
       console.log("🎯 Quantina Core Reply:", data);
 
-      if (data.translated) {
-        addMsg(data.translated, false);
-      } else if (data.translated_text) {
-        addMsg(data.translated_text, false);
-      } else if (data.body_translated) {
-        addMsg(data.body_translated, false);
-      } else if (data.original) {
-        addMsg(data.original, false);
-      } else {
-        addMsg("⚠️ No translation received.", false);
-      }
+      if (data.translated) addMsg(data.translated, false);
+      else if (data.translated_text) addMsg(data.translated_text, false);
+      else if (data.body_translated) addMsg(data.body_translated, false);
+      else if (data.original) addMsg(data.original, false);
+      else addMsg("⚠️ No translation received.", false);
     } catch (err) {
       console.error("❌ Core fetch error:", err);
       addMsg("⚠️ Network error — check Quantina Core.", false);
@@ -275,7 +268,7 @@ function initSocket() {
     }
   });
 
-  // ---------- MIC (Speech → Input only, voice upload next phase) ----------
+  // ---------- MIC ----------
   function initMicStable(barEl, inputEl) {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
