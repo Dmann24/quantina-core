@@ -20,6 +20,59 @@ import { execSync } from "child_process";
 
 dotenv.config();
 const app = express();
+
+// ============================================================
+// 💾 Initialize SQLite Database (Quantina Language Persistence)
+// ============================================================
+import { open } from "sqlite";
+import sqlite3 from "sqlite3";
+
+let db;
+
+(async () => {
+  try {
+    db = await open({
+      filename: "./data/quantina.db",
+      driver: sqlite3.Database,
+    });
+
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        preferred_lang TEXT
+      )
+    `);
+
+    console.log("✅ SQLite tables are ready");
+  } catch (err) {
+    console.error("❌ SQLite init failed:", err);
+  }
+})();
+
+// ============================================================
+// 🧠 SQLite Helper Functions
+// ============================================================
+async function loadUserLang(id) {
+  try {
+    const user = await db.get("SELECT preferred_lang FROM users WHERE id = ?", [id]);
+    return user ? user.preferred_lang : "English";
+  } catch (err) {
+    console.error("⚠️ loadUserLang error:", err);
+    return "English";
+  }
+}
+
+async function saveUserLang(id, lang) {
+  try {
+    await db.run("INSERT OR REPLACE INTO users (id, preferred_lang) VALUES (?, ?)", [id, lang]);
+  } catch (err) {
+    console.error("⚠️ saveUserLang error:", err);
+  }
+}
+
+// ============================================================
+// ⚙️ Express + CORS + Socket Setup
+// ============================================================
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
@@ -27,6 +80,7 @@ const io = new Server(server, {
     methods: ["GET", "POST"],
   },
 });
+
 
 // =============================================================
 // 🛡️ Enable CORS for Frontend Requests
@@ -213,16 +267,22 @@ async function translateText(text, targetLang = "English") {
 // =============================================================
 const upload = multer({ dest: "uploads/" });
 
-// =============================================================
-// 🔁 Main Endpoint: /api/peer-message
-// =============================================================
+// ============================================================
+// 🧠 Main Endpoint: /api/peer-message
+// ============================================================
 app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
   try {
     const { sender_id, receiver_id, text, mode } = req.body;
     let message = text || "";
 
+    // ====================================================
+    // 💾 Load + Save User Language Preferences
+    // ====================================================
+    await loadUserLang(receiver_id);               // Check receiver’s preferred language
+    await saveUserLang(sender_id, "English");      // Save sender’s default (or detected) language
+
     if (mode === "voice" && req.file) {
-      console.log(`🎤 Voice received from ${sender_id}: ${req.file.path}`);
+      console.log(`🎙️ Voice received from ${sender_id}: ${req.file.path}`);
       message = await transcribeAudio(req.file.path);
     }
 
@@ -232,20 +292,21 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
 
     await setUserLang(sender_id, senderLang);
 
-    console.log(`✅ Processed (${mode}) ${sender_id} → ${receiver_id}`);
+    console.log(`🟢 Processed (${mode}) ${sender_id} → ${receiver_id}`);
 
     res.json({
       success: true,
       sender_language: senderLang,
       receiver_language: receiverLang,
       original: message,
-      translated
+      translated,
     });
   } catch (err) {
     console.error("❌ /api/peer-message failed:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 // =============================================================
 // 🌍 Utility Routes

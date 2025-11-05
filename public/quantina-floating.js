@@ -29,50 +29,44 @@
   let socket = null;
 
   // ====================================================
-  // ⚡ Socket Initialization
-  // ====================================================
-  function initSocket() {
-    if (typeof io === "undefined") {
-      console.warn("⚠️ Socket.IO not ready yet.");
-      return;
-    }
+// ⚡ Initialize Secure Socket Connection to Quantina Core
+// ====================================================
 
-    const user = JSON.parse(localStorage.getItem("quantina_user_v5") || "{}");
-    const CORE_BASE =
-      location.hostname === "localhost"
-        ? "http://localhost:4001"
-        : "https://quantina-core-production.up.railway.app";
-
-    socket = io(CORE_BASE, {
-      auth: { token: user.id || "guest_" + Math.random().toString(36).substring(2, 9) },
-      transports: ["websocket"],
-    });
-
-    socket.on("connect", () => {
-      console.log(`🟢 Connected to Quantina Core via Socket.IO as ${user.id}`);
-    });
-
-    socket.on("disconnect", () => {
-      console.warn("🔴 Socket disconnected — retrying...");
-      setTimeout(initSocket, 5000);
-    });
-
-    socket.on("receive_message", (msg) => {
-      try {
-        const text = msg.body_translated || msg.body || "[no text]";
-        if (typeof addMsg === "function") {
-          addMsg(`${msg.sender_id || "peer"}: ${text}`, false);
-        } else {
-          console.warn("⚠️ addMsg not yet available to render:", text);
-        }
-      } catch (err) {
-        console.error("💥 Incoming message error:", err);
-      }
-    });
-
-    // Optional backend ping
-    socket.emit("ping_test", { hello: "from client" });
+function initSocket() {
+  if (typeof io === "undefined") {
+    console.warn("⚠️ Socket.IO client not yet ready.");
+    return;
   }
+
+  const user = JSON.parse(localStorage.getItem("quantina_user_v5") || "{}");
+
+  socket = io("wss://quantina-core-production.up.railway.app", {
+    path: "/socket.io/",
+    transports: ["websocket"],
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 3000,
+    auth: {
+      token: user.id || "guest_" + Math.random().toString(36).substring(2, 9),
+    },
+  });
+
+  socket.on("connect", () => {
+    console.log(`🟢 Connected to Quantina Core via Socket.IO as ${user.id}`);
+  });
+
+  socket.on("disconnect", () => {
+    console.warn("🔴 Socket disconnected — retrying in 3 s…");
+  });
+
+  socket.on("receive_message", (msg) => {
+    const text = msg.body_translated || msg.body || "[no text]";
+    if (typeof addMsg === "function") {
+      addMsg(`${msg.sender_id || "peer"}: ${text}`, false);
+    }
+  });
+}
+
 
   // ==============================
   // 🔗 BACKEND ENDPOINTS
