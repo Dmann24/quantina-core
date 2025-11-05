@@ -12,6 +12,72 @@
 
 (function () {
   console.log("🚀 Quantina Chat Widget Loaded v5.8.0 (Hardwired Edition)");
+// ====================================================
+// 🌐 Load Socket.IO Client Script + Initialize Socket
+// ====================================================
+if (typeof io === "undefined") {
+  const script = document.createElement("script");
+  script.src = "https://cdn.socket.io/4.7.2/socket.io.min.js";
+  script.onload = () => {
+    console.log("✅ Socket.IO client loaded");
+    initSocket(); // initialize once library is ready
+  };
+  document.head.appendChild(script);
+}
+
+let socket = null;
+
+// ====================================================
+// ⚡ Socket Initialization Function
+// ====================================================
+function initSocket() {
+  if (typeof io === "undefined") {
+    console.warn("⚠️ Socket.IO client not yet ready.");
+    return; // ✅ fixed placement for return
+  }
+
+  const user = JSON.parse(localStorage.getItem("quantina_user_v5") || "{}");
+  const CORE_BASE = "https://quantina-core-production.up.railway.app";
+
+  socket = io(CORE_BASE, {
+    auth: { token: user.id || "guest_" + Math.random().toString(36).substring(2, 9) },
+    transports: ["websocket"],
+  });
+
+  // ====================================================
+  // 🔗 CONNECTION EVENTS
+  // ====================================================
+  socket.on("connect", () => {
+    console.log(`🟢 Connected to Quantina Core via Socket.IO as ${user.id}`);
+  });
+
+  socket.on("disconnect", () => {
+    console.warn("🔴 Socket disconnected from Quantina Core");
+    setTimeout(initSocket, 5000); // 🔁 auto-reconnect every 5s
+  });
+
+  // ====================================================
+  // 💬 MESSAGE HANDLING
+  // ====================================================
+  socket.on("receive_message", (msg) => {
+    try {
+      const text = msg.body_translated || msg.body || "[no text]";
+      if (typeof addMsg === "function") {
+        addMsg(`${msg.sender_id || "peer"}: ${text}`, false);
+      } else {
+        console.warn("⚠️ addMsg not yet available to render:", text);
+      }
+    } catch (err) {
+      console.error("💥 Error rendering incoming message:", err);
+    }
+  });
+
+  // ====================================================
+  // 🧪 OPTIONAL TEST PING (for debugging)
+  // ====================================================
+  socket.emit("ping_test", { hello: "from client" });
+}
+
 
   // ==============================
   // 🔗 BACKEND ENDPOINTS

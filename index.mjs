@@ -7,7 +7,8 @@
 //  - Output-side translation via GPT-4o-mini
 //  - Whisper for speech transcription (with ffmpeg re-encode)
 // =============================================================
-
+import { createServer } from "http";
+import { Server } from "socket.io";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -19,6 +20,14 @@ import { execSync } from "child_process";
 
 dotenv.config();
 const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // allow all origins for now
+    methods: ["GET", "POST"],
+  },
+});
+
 // =============================================================
 // 🛡️ Enable CORS for Frontend Requests
 // =============================================================
@@ -274,6 +283,42 @@ app.get("/api/health", (req, res) => {
 // =============================================================
 // 🚀 Start Server
 // =============================================================
-app.listen(PORT, () => {
-  console.log(`✅ Quantina Core AI Relay v3.3 running on port ${PORT}`);
+// =============================================================
+// ⚡ Quantina Peer-to-Peer Socket Layer
+// =============================================================
+io.on("connection", (socket) => {
+  console.log(`🟢 Socket connected: ${socket.id}`);
+
+  socket.on("send_message", (msg) => {
+    console.log("📨 P2P incoming:", msg);
+
+    const { fromUserId, toUserId, body } = msg;
+    if (!fromUserId || !toUserId || !body) {
+      socket.emit("message_error", { error: "Invalid message payload" });
+      return;
+    }
+
+    // Relay message to target peer if connected
+    const targetSocket = [...io.sockets.sockets.values()].find(
+      (s) => s.handshake.auth?.token === toUserId
+    );
+
+    if (targetSocket) {
+      targetSocket.emit("receive_message", {
+        sender_id: fromUserId,
+        body_translated: body, // For now echo text (later we’ll auto-translate)
+      });
+      socket.emit("message_sent", { success: true });
+    } else {
+      socket.emit("message_error", { error: "Peer not online" });
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`🔴 Socket disconnected: ${socket.id}`);
+  });
+});
+
+server.listen(PORT, () => console.log(`✅ Quantina Core Live Socket running on port ${PORT}`));
+
 });
