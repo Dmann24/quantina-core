@@ -253,6 +253,12 @@ app.get("/", (req, res) => {
     </html>
   `);
 });
+// =============================================================
+// 🌡️ Health check endpoint for front-end widget
+// =============================================================
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", message: "Quantina Core is alive" });
+});
 
 // =============================================================
 // 🚀 Start Server
