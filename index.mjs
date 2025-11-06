@@ -1,12 +1,3 @@
-// =============================================================
-// 🌐 Quantina Core AI Translation Relay v3.3
-//  - Text + Voice support
-//  - Auto language detection (sender)
-//  - Dynamic receiver language memory
-//  - SQLite + JSON hybrid persistence
-//  - Output-side translation via GPT-4o-mini
-//  - Whisper for speech transcription (with ffmpeg re-encode)
-// =============================================================
 import { createServer } from "http";
 import { Server } from "socket.io";
 import express from "express";
@@ -17,37 +8,37 @@ import fetch from "node-fetch";
 import FormData from "form-data";
 import dotenv from "dotenv";
 import { execSync } from "child_process";
-
-dotenv.config();
-const app = express();
-
-// ============================================================
-// 💾 Initialize SQLite Database (Quantina Language Persistence)
-// ============================================================
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 
-let db;
+dotenv.config();
+const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
+
+let db; // ✅ keep only this declaration
 
 (async () => {
-  try {
-    db = await open({
-      filename: "./data/quantina.db",
-      driver: sqlite3.Database,
-    });
+  db = await open({
+    filename: "./data/quantina.db",
+    driver: sqlite3.Database,
+  });
 
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        preferred_lang TEXT
-      )
-    `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      preferred_lang TEXT
+    )
+  `);
 
-    console.log("✅ SQLite tables are ready");
-  } catch (err) {
-    console.error("❌ SQLite init failed:", err);
-  }
+  console.log("✅ SQLite tables are ready");
 })();
+
 
 // ============================================================
 // 🧠 SQLite Helper Functions
