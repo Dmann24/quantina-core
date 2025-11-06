@@ -61,17 +61,6 @@ async function saveUserLang(id, lang) {
   }
 }
 
-// ============================================================
-// ⚙️ Express + CORS + Socket Setup
-// ============================================================
-const server = createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*", // allow all origins for now
-    methods: ["GET", "POST"],
-  },
-});
-
 
 // =============================================================
 // 🛡️ Enable CORS for Frontend Requests
@@ -99,7 +88,7 @@ if (!fs.existsSync(USER_FILE)) fs.writeFileSync(USER_FILE, JSON.stringify({}, nu
 // =============================================================
 // 🧩 Hybrid persistence (SQLite + JSON fallback)
 // =============================================================
-let db = null;
+
 let usingSQLite = false;
 
 try {
