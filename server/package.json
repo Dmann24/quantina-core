@@ -1,0 +1,39 @@
+{
+  "name": "quantina-chat-server",
+  "version": "1.1.0",
+  "description": "Quantina Chat backend server with Express, Socket.IO, and SQLite support.",
+  "main": "index.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs",
+    "dev": "nodemon index.mjs"
+  },
+  "engines": {
+    "node": ">=22.x"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
+    "openai": "^4.0.0",
+    "socket.io": "^4.8.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "keywords": [
+    "quantina",
+    "chat",
+    "server",
+    "socket.io",
+    "express",
+    "sqlite",
+    "railway"
+  ],
+  "author": "Quantina Core",
+  "license": "MIT"
+}
