@@ -191,32 +191,43 @@ router.post("/peer-message-base64", async (req, res) => {
     const audioBuffer = Buffer.from(audio_base64, "base64");
     console.log("📥 Android audio buffer:", audioBuffer.length, "bytes");
 
-    // 1) Transcription
+    // --------------------------------------------------
+    // 1) TRANSCRIBE
+    // --------------------------------------------------
     const transcription = await openai.audio.transcriptions.create({
       file: audioBuffer,
       model: "gpt-4o-mini-transcribe",
-      response_format: "verbose_json"
+      response_format: "verbose_json",
     });
 
     const originalText = transcription.text?.trim() || "(no speech detected)";
     let detectedLang = transcription.language || "auto";
 
     console.log("📝 Android transcription:", originalText);
-    console.log("🌍 Detected lang:", detectedLang);
+    console.log("🌍 Detected language:", detectedLang);
 
-    // 2) Language detection fallback
+    // --------------------------------------------------
+    // 2) LANGUAGE DETECTION FALLBACK
+    // --------------------------------------------------
     if (detectedLang === "auto") {
       const detectResp = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: "Detect the language of this text. Only respond with the name." },
+          {
+            role: "system",
+            content: "Detect the language of this text. Respond only with the language name.",
+          },
           { role: "user", content: originalText },
         ],
       });
-      detectedLang = detectResp.choices[0]?.message?.content?.trim() || "Unknown";
+
+      detectedLang =
+        detectResp.choices[0]?.message?.content?.trim() || "Unknown";
     }
 
-    // 3) Translation
+    // --------------------------------------------------
+    // 3) TRANSLATION
+    // --------------------------------------------------
     const receiverLang = req.body.receiver_lang || "English";
     let translatedText = originalText;
 
@@ -226,25 +237,38 @@ router.post("/peer-message-base64", async (req, res) => {
         messages: [
           {
             role: "system",
-            content: `Translate from ${detectedLang} to ${receiverLang}. Keep tone natural.`,
+            content: `Translate from ${detectedLang} to ${receiverLang}. Keep the tone natural and conversational.`,
           },
           { role: "user", content: originalText },
         ],
       });
+
       translatedText =
-        translationResp.choices[0]?.message?.content?.trim() || "(translation unavailable)";
+        translationResp.choices[0]?.message?.content?.trim() ||
+        "(translation unavailable)";
     }
 
-    // 4) Response to Android
-    return res.json({
-      success: true,
-      original_text: originalText,
-      translated_text: translatedText,
-      detected_language: detectedLang,
-      receiver_language: receiverLang,
-    });
+    // --------------------------------------------------
+    // 4) RESPONSE BACK TO ANDROID
+    // (Matches EXACT FORMAT expected by app.js)
+// --------------------------------------------------
+return res.json({
+  success: true,
+
+  // What your UI expects:
+  original: originalText,
+  translated: translatedText,
+  sender_language: detectedLang,
+  receiver_language: receiverLang,
+
+  // Also keep new names for future API use:
+  original_text: originalText,
+  translated_text: translatedText,
+  detected_language: detectedLang
+});
   } catch (err) {
     console.error("❌ Android Base64 Handler Error:", err.message);
+
     return res.status(500).json({
       success: false,
       error: err.message || "Internal server error",
