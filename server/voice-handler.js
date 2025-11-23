@@ -169,5 +169,88 @@ router.post("/peer-message", upload.single("audio"), async (req, res) => {
   }
 });
 
+// =====================================================
+// ANDROID BASE64 VOICE ROUTE (SAFE – does NOT touch v6.1)
+// =====================================================
+router.post("/peer-message-base64", async (req, res) => {
+  console.log("🎧 /api/peer-message-base64 (Android) request");
+
+  try {
+    const { sender_id, receiver_id, audio_base64 } = req.body;
+
+    if (!audio_base64) {
+      return res.status(400).json({
+        success: false,
+        error: "No audio_base64 received.",
+      });
+    }
+
+    const openai = getOpenAI();
+
+    // Convert Base64 → Buffer
+    const audioBuffer = Buffer.from(audio_base64, "base64");
+    console.log("📥 Android audio buffer:", audioBuffer.length, "bytes");
+
+    // 1) Transcription
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioBuffer,
+      model: "gpt-4o-mini-transcribe",
+      response_format: "verbose_json"
+    });
+
+    const originalText = transcription.text?.trim() || "(no speech detected)";
+    let detectedLang = transcription.language || "auto";
+
+    console.log("📝 Android transcription:", originalText);
+    console.log("🌍 Detected lang:", detectedLang);
+
+    // 2) Language detection fallback
+    if (detectedLang === "auto") {
+      const detectResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "Detect the language of this text. Only respond with the name." },
+          { role: "user", content: originalText },
+        ],
+      });
+      detectedLang = detectResp.choices[0]?.message?.content?.trim() || "Unknown";
+    }
+
+    // 3) Translation
+    const receiverLang = req.body.receiver_lang || "English";
+    let translatedText = originalText;
+
+    if (detectedLang.toLowerCase() !== receiverLang.toLowerCase()) {
+      const translationResp = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `Translate from ${detectedLang} to ${receiverLang}. Keep tone natural.`,
+          },
+          { role: "user", content: originalText },
+        ],
+      });
+      translatedText =
+        translationResp.choices[0]?.message?.content?.trim() || "(translation unavailable)";
+    }
+
+    // 4) Response to Android
+    return res.json({
+      success: true,
+      original_text: originalText,
+      translated_text: translatedText,
+      detected_language: detectedLang,
+      receiver_language: receiverLang,
+    });
+  } catch (err) {
+    console.error("❌ Android Base64 Handler Error:", err.message);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Internal server error",
+    });
+  }
+});
+
 console.log("✅ Voice Handler v6.1 — Transcribe + Translate — ready!");
 export default router;
