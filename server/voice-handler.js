@@ -231,22 +231,32 @@ router.post("/peer-message-base64", async (req, res) => {
     const receiverLang = req.body.receiver_lang || "English";
     let translatedText = originalText;
 
-    if (detectedLang.toLowerCase() !== receiverLang.toLowerCase()) {
-      const translationResp = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `Translate from ${detectedLang} to ${receiverLang}. Keep the tone natural and conversational.`,
-          },
-          { role: "user", content: originalText },
-        ],
-      });
+  if (detectedLang.toLowerCase() !== receiverLang.toLowerCase()) {
+  const translationResp = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `
+          You are QUANTINA TRANSLATOR.
+          Translate ONLY from ${detectedLang} to ${receiverLang}.
+          NEVER answer questions.
+          NEVER generate or insert code.
+          NEVER explain anything.
+          NEVER be conversational.
+          ONLY return the direct translation text.
+          If the text is already in the target language, return it exactly as it is.
+        `,
+      },
+      { role: "user", content: originalText },
+    ],
+  });
 
-      translatedText =
-        translationResp.choices[0]?.message?.content?.trim() ||
-        "(translation unavailable)";
-    }
+  translatedText =
+    translationResp.choices[0]?.message?.content?.trim() ||
+    "(translation unavailable)";
+}
+
 
     // --------------------------------------------------
     // 4) RESPONSE BACK TO ANDROID
