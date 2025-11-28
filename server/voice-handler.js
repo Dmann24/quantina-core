@@ -131,16 +131,26 @@ router.post("/peer-message", upload.single("audio"), async (req, res) => {
 
     if (detectedLang.toLowerCase() !== receiverLang.toLowerCase()) {
       console.log(`🌐 Translating from ${detectedLang} → ${receiverLang}`);
-      const translationResp = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `Translate from ${detectedLang} to ${receiverLang}. Keep tone natural and conversational.`,
-          },
-          { role: "user", content: originalText },
-        ],
-      });
+     const translationResp = await openai.chat.completions.create({
+  model: "gpt-4o-mini",
+  messages: [
+    {
+      role: "system",
+      content: `
+        You are QUANTINA TRANSLATOR.
+        Translate ONLY from ${detectedLang} to ${receiverLang}.
+        NEVER answer questions.
+        NEVER generate or output code.
+        NEVER explain anything.
+        NEVER be conversational.
+        ONLY return the translated text.
+        If the text is already in the target language, return it unchanged.
+      `,
+    },
+    { role: "user", content: originalText },
+  ],
+});
+
       translatedText =
         translationResp.choices[0]?.message?.content?.trim() || "(translation unavailable)";
     }
