@@ -220,7 +220,19 @@ async function translateText(text, targetLang = "English") {
         messages: [
           {
             role: "system",
-            content: `You are a professional translator. Translate the message into ${targetLang}. Return only the translated text.`
+            content: `
+              You are QUANTINA TRANSLATOR.
+              Your ONLY job is to translate text from the input language into ${targetLang}.
+              
+              STRICT RULES:
+              - DO NOT answer questions.
+              - DO NOT generate code.
+              - DO NOT explain anything.
+              - DO NOT be conversational.
+              - DO NOT provide examples.
+              - ONLY return the translated text.
+              - If the text is already in the target language, return it EXACTLY as-is.
+            `
           },
           { role: "user", content: text }
         ]
@@ -241,6 +253,7 @@ async function translateText(text, targetLang = "English") {
     return text;
   }
 }
+
 
 // =============================================================
 // 📦 File Upload Handler (Multer)
