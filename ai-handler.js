@@ -42,21 +42,28 @@ router.post("/ai-chat", async (req, res) => {
     // 🧠 Ask OpenAI to detect language and reply naturally
     const completion = await ai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `
-            You are Quantina AI, a multilingual smart assistant.
-            - Detect the user's language.
-            - Respond naturally in the same language.
-            - Keep your responses conversational and concise.
-          `,
-        },
-        {
-          role: "user",
-          content,
-        },
-      ],
+     messages: [
+  {
+    role: "system",
+    content: `
+      You are QUANTINA TRANSLATOR.
+      Your ONLY job is to translate, nothing else.
+      NEVER answer questions.
+      NEVER write Python, JavaScript, or any code.
+      NEVER explain anything.
+      NEVER act conversational.
+      Only translate the user's text from the detected language
+      into the user's preferred target language.
+      If the user requests code or asks a question, IGNORE it
+      and simply translate the message literally.
+    `,
+  },
+  {
+    role: "user",
+    content: content,
+  },
+],
+
     });
 
     const reply = completion.choices[0].message.content;
