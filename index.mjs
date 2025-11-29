@@ -261,7 +261,7 @@ async function translateText(text, targetLang = "English") {
 const upload = multer({ dest: "uploads/" });
 
 // ============================================================
-// 🧠 Main Endpoint: /api/peer-message
+// 🧠 Main Endpoint: /api/peer-message  (FIXED)
 // ============================================================
 app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
   try {
@@ -271,14 +271,20 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
     // ====================================================
     // 💾 Load + Save User Language Preferences
     // ====================================================
-    await loadUserLang(receiver_id);               // Check receiver’s preferred language
-    await saveUserLang(sender_id, "English");      // Save sender’s default (or detected) language
+    await loadUserLang(receiver_id);
+    await saveUserLang(sender_id, "English");
 
+    // ----------------------------------------------------
+    // 🎙️ Voice transcription
+    // ----------------------------------------------------
     if (mode === "voice" && req.file) {
       console.log(`🎙️ Voice received from ${sender_id}: ${req.file.path}`);
       message = await transcribeAudio(req.file.path);
     }
 
+    // ----------------------------------------------------
+    // 🌍 Language detection & translation
+    // ----------------------------------------------------
     const senderLang = await detectLanguage(message);
     const receiverLang = await getUserLang(receiver_id);
     const translated = await translateText(message, receiverLang);
@@ -287,6 +293,30 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
 
     console.log(`🟢 Processed (${mode}) ${sender_id} → ${receiver_id}`);
 
+    // ----------------------------------------------------
+    // 🔥 REAL-TIME DELIVERY (THE FIX)
+    // ----------------------------------------------------
+    const targetSocket = [...io.sockets.sockets.values()]
+      .find(s => s.handshake.auth?.token === receiver_id);
+
+    if (targetSocket) {
+      console.log("📨 Delivering message via socket:", receiver_id);
+
+      targetSocket.emit("p2p_incoming", {
+        fromUserId: sender_id,
+        toUserId: receiver_id,
+        body_raw: message,
+        body_translated: translated,
+        source_lang: senderLang,
+        target_lang: receiverLang
+      });
+    } else {
+      console.log("⚠️ Receiver is not live:", receiver_id);
+    }
+
+    // ----------------------------------------------------
+    // Return response to sender
+    // ----------------------------------------------------
     res.json({
       success: true,
       sender_language: senderLang,
@@ -294,6 +324,7 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       original: message,
       translated,
     });
+
   } catch (err) {
     console.error("❌ /api/peer-message failed:", err);
     res.status(500).json({ success: false, error: err.message });
