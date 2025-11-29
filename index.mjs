@@ -341,7 +341,8 @@ app.get("/api/health", (req, res) => {
 // ⚡ Quantina Peer-to-Peer Socket Layer
 // ===================================================
 io.on("connection", (socket) => {
-  console.log(`🟢 Socket connected: ${socket.id}`);
+  console.log("🟢 Socket connected:", socket.id, "AUTH:", socket.handshake.auth);
+
 
   socket.on("send_message", (msg) => {
     console.log("📨 P2P incoming:", msg);
