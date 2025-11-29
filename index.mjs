@@ -373,6 +373,68 @@ io.on("connection", (socket) => {
     console.log(`🔴 Socket disconnected: ${socket.id}`);
   });
 });
+// ===================================================
+// ⚡ Quantina Peer-to-Peer Socket Layer (FULL FIX)
+// ===================================================
+io.on("connection", (socket) => {
+  console.log("🟢 Socket connected:", socket.id, "AUTH:", socket.handshake.auth);
+
+  // -----------------------------------------------------
+  // 📤 Outgoing P2P Message (Android → Backend)
+  // -----------------------------------------------------
+  socket.on("p2p_outgoing", async (msg) => {
+    console.log("📨 P2P Outgoing:", msg);
+
+    const { fromUserId, toUserId, body } = msg;
+
+    if (!fromUserId || !toUserId || !body) {
+      socket.emit("message_error", { error: "Invalid message payload" });
+      return;
+    }
+
+    // Detect source language of sender's text
+    const senderLang = await detectLanguage(body);
+
+    // Load saved language for the receiver
+    const receiverLang = await getUserLang(toUserId);
+
+    // Save sender's detected language
+    await setUserLang(fromUserId, senderLang);
+
+    // Translate into receiver's preferred language
+    const translated = await translateText(body, receiverLang);
+
+    // Find target peer socket
+    const targetSocket = [...io.sockets.sockets.values()]
+      .find(s => s.handshake.auth?.token === toUserId);
+
+    if (targetSocket) {
+      // -----------------------------------------------------
+      // 📥 Deliver translated message to receiver
+      // -----------------------------------------------------
+      targetSocket.emit("p2p_incoming", {
+        fromUserId,
+        toUserId,
+        body_raw: body,
+        body_translated: translated,
+        source_lang: senderLang,
+        target_lang: receiverLang
+      });
+
+      // Confirm success to sender
+      socket.emit("message_sent", { success: true });
+    } else {
+      socket.emit("message_error", { error: "Peer not online" });
+    }
+  });
+
+  // -----------------------------------------------------
+  // 🔴 Disconnect handler
+  // -----------------------------------------------------
+  socket.on("disconnect", () => {
+    console.log(`🔴 Socket disconnected: ${socket.id}`);
+  });
+});
 
 // ===================================================
 // 🚀 Start Express + Socket Server
