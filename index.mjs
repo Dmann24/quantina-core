@@ -23,6 +23,17 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 8080;
+// ---------------------------------------------------
+// Allow OPTIONS requests (Fix 403 preflight)
+// ---------------------------------------------------
+app.options("*", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+    return res.sendStatus(200);
+});
+
+
 // =============================================================
 // 🔐 GLOBAL API KEY FIREWALL (Protects ALL ROUTES)
 // =============================================================
