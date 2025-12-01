@@ -23,7 +23,18 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 8080;
+// =============================================================
+// 🔐 GLOBAL API KEY FIREWALL (Protects ALL ROUTES)
+// =============================================================
+app.use((req, res, next) => {
+  const clientKey = req.headers["x-api-key"];
 
+  if (!clientKey || clientKey !== process.env.MASTER_KEY) {
+    return res.status(403).json({ error: "Forbidden: Invalid API Key" });
+  }
+
+  next();
+});
 // =============================================================
 // 📁 Ensure data folder exists
 // =============================================================
