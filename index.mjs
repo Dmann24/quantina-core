@@ -106,9 +106,10 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
   })
 );
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
