@@ -366,22 +366,72 @@ app.get("/", (req, res) => {
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Quantina Core is alive" });
 });
+// =============================================================
+//  USER ↔ SOCKET MAPPING + REALTIME ROUTING ENGINE
+// =============================================================
+
+// Stores:  userId → Set(socketIds)
+const userSockets = new Map();
+
+// Middleware: Attach userId from handshake.auth
+io.use((socket, next) => {
+  const userId = socket.handshake.auth?.userId;
+  if (!userId) return next(new Error("Missing userId"));
+  socket.userId = userId;
+  next();
+});
+
+io.on("connection", (socket) => {
+  const userId = socket.userId;
+
+  // Register socket
+  if (!userSockets.has(userId)) {
+    userSockets.set(userId, new Set());
+  }
+  userSockets.get(userId).add(socket.id);
+
+  console.log(`🟢 User ${userId} connected on socket ${socket.id}`);
+  console.log("📌 Current map:", userSockets);
+
+  // ROUTING: Handle outgoing P2P messages
+  socket.on("p2p_outgoing", (msg) => {
+    const { fromUserId, toUserId, body } = msg;
+
+    console.log(`📨 ROUTE ${fromUserId} → ${toUserId}:`, body);
+
+    const targetSockets = userSockets.get(toUserId);
+    if (!targetSockets || targetSockets.size === 0) {
+      console.log(`⚠️ ${toUserId} is offline`);
+      return;
+    }
+
+    // Deliver to all active sockets of receiver
+    for (const sockId of targetSockets) {
+      io.to(sockId).emit("p2p_incoming", {
+        fromUserId,
+        toUserId,
+        body,
+        timestamp: Date.now()
+      });
+    }
+  });
+
+  // Cleanup on disconnect
+  socket.on("disconnect", () => {
+    if (userSockets.has(userId)) {
+      userSockets.get(userId).delete(socket.id);
+      if (userSockets.get(userId).size === 0) {
+        userSockets.delete(userId);
+      }
+    }
+    console.log(`🔴 ${userId} disconnected socket ${socket.id}`);
+  });
+});
 
 // =============================================================
 // ⚡ Socket Layer – only for delivery + presence
 // =============================================================
-io.on("connection", (socket) => {
-  console.log(
-    "🟢 Socket connected:",
-    socket.id,
-    "AUTH:",
-    socket.handshake.auth
-  );
 
-  socket.on("disconnect", () => {
-    console.log(`🔴 Socket disconnected: ${socket.id}`);
-  });
-});
 
 // =============================================================
 // 🚀 Start Express + Socket Server
