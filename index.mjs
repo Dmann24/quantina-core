@@ -366,13 +366,6 @@ app.get("/", (req, res) => {
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Quantina Core is alive" });
 });
-// 🩺 Health check
-app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "Quantina Core is alive" });
-});
-
-
-
 
 // =============================================================
 // ⚡ Socket Layer – only for delivery + presence
@@ -396,4 +389,3 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
   console.log(`✅ Quantina Core Live Socket running on port ${PORT}`);
 });
-
