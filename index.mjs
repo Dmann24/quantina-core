@@ -366,6 +366,44 @@ app.get("/", (req, res) => {
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Quantina Core is alive" });
 });
+// 🩺 Health check
+app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", message: "Quantina Core is alive" });
+});
+
+// -------------------------------------------------------------
+// 🧩 User ↔ Socket Mapping Layer (NEW BLOCK GOES HERE)
+// -------------------------------------------------------------
+
+// Store active sockets per user
+const userSockets = new Map();
+
+io.use((socket, next) => {
+    const userId = socket.handshake.auth?.userId;
+    if (!userId) {
+        return next(new Error("User ID missing"));
+    }
+    socket.userId = userId;
+    next();
+});
+
+io.on("connection", (socket) => {
+    const userId = socket.userId;
+
+    if (!userSockets.has(userId)) {
+        userSockets.set(userId, new Set());
+    }
+    userSockets.get(userId).add(socket);
+
+    console.log(`🟢 User ${userId} connected via socket ${socket.id}`);
+
+    socket.on("disconnect", () => {
+        userSockets.get(userId)?.delete(socket);
+        console.log(`🔴 User ${userId} disconnected (${socket.id})`);
+    });
+});
+
+
 
 // =============================================================
 // ⚡ Socket Layer – only for delivery + presence
