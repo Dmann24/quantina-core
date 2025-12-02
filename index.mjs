@@ -305,8 +305,10 @@ if (targetSocketIds && targetSocketIds.size > 0) {
         io.to(id).emit("p2p_incoming", {
             fromUserId: sender_id,
             toUserId: receiver_id,
-            body_raw: message,
-            body_translated: translated,
+           audio:mode === "voice" ? true : false,
+body_raw: message,
+body_translated: translated,
+
             source_lang: senderLang,
             target_lang: receiverLang,
         });
