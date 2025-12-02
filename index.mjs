@@ -298,9 +298,10 @@ app.post(
       console.log(`🟢 Processed (${mode || "text"}) ${sender_id} → ${receiver_id}`);
 
       // 🔥 REAL-TIME DELIVERY over socket
-      const targetSocket = [...io.sockets.sockets.values()].find(
-        (s) => s.handshake.auth?.token === receiver_id
-      );
+      const targetSocket = userSockets.get(receiver_id)
+    ? [...userSockets.get(receiver_id)][0] 
+    : null;
+
 
       if (targetSocket) {
         console.log("📨 Delivering message via socket:", receiver_id);
