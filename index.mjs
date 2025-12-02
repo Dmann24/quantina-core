@@ -298,25 +298,22 @@ app.post(
       console.log(`🟢 Processed (${mode || "text"}) ${sender_id} → ${receiver_id}`);
 
       // 🔥 REAL-TIME DELIVERY over socket
-      const targetSocket = userSockets.get(receiver_id)
-    ? [...userSockets.get(receiver_id)][0] 
-    : null;
+      const targetSocketIds = userSockets.get(receiver_id);
 
-
-      if (targetSocket) {
-        console.log("📨 Delivering message via socket:", receiver_id);
-
-        targetSocket.emit("p2p_incoming", {
-          fromUserId: sender_id,
-          toUserId: receiver_id,
-          body_raw: message,
-          body_translated: translated,
-          source_lang: senderLang,
-          target_lang: receiverLang,
+if (targetSocketIds && targetSocketIds.size > 0) {
+    for (const id of targetSocketIds) {
+        io.to(id).emit("p2p_incoming", {
+            fromUserId: sender_id,
+            toUserId: receiver_id,
+            body_raw: message,
+            body_translated: translated,
+            source_lang: senderLang,
+            target_lang: receiverLang,
         });
-      } else {
-        console.log("⚠️ Receiver is not live:", receiver_id);
-      }
+    }
+} else {
+    console.log("⚠️ Receiver is not live:", receiver_id);
+}
 
       // Response back to sender (for UI if needed)
       res.json({
