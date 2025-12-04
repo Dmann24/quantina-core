@@ -8,13 +8,12 @@ import fetch from "node-fetch";
 import FormData from "form-data";
 import dotenv from "dotenv";
 import { execSync } from "child_process";
-import { open } from "sqlite";
-import sqlite3 from "sqlite3";
 
-import pkg from 'pg';
+import pkg from "pg";
 const { Pool } = pkg;
 
 dotenv.config();
+
 // =============================
 // PostgreSQL Connection Pool
 // =============================
@@ -27,112 +26,81 @@ const pg = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-
-
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 const PORT = process.env.PORT || 8080;
-// ---------------------------------------------------
-// Allow OPTIONS requests (Fix 403 preflight)
-// ---------------------------------------------------
-app.options("*", (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
-    return res.sendStatus(200);
-});
-
 
 // =============================================================
-// 🔐 GLOBAL API KEY FIREWALL (Protects ALL ROUTES)
+// Allow OPTIONS
+// =============================================================
+app.options("*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
+  return res.sendStatus(200);
+});
+
+// =============================================================
+// API-KEY FIREWALL
 // =============================================================
 app.use((req, res, next) => {
   const clientKey = req.headers["x-api-key"];
-
   if (!clientKey || clientKey !== process.env.MASTER_KEY) {
     return res.status(403).json({ error: "Forbidden: Invalid API Key" });
   }
-
   next();
 });
-// =============================================================
-// 📁 Ensure data folder exists
-// =============================================================
-if (!fs.existsSync("data")) fs.mkdirSync("data");
-
-let db;
 
 // =============================================================
-// 🧠 SQLite – single, clean initialization
-// =============================================================
-(async () => {
-  db = await open({
-    filename: "./data/quantina.db",
-    driver: sqlite3.Database,
-  });
-
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      preferred_lang TEXT
-    )
-  `);
-
-  console.log("✅ SQLite tables are ready");
-})();
-
-// =============================================================
-// 🧠 User language helpers (SQLite only)
+// User Language Helpers (Postgres Only)
 // =============================================================
 async function getUserLang(id) {
   try {
-    const row = await db.get(
-      "SELECT preferred_lang FROM users WHERE id = ?",
+    const result = await pg.query(
+      "SELECT preferred_lang FROM users WHERE id=$1",
       [id]
     );
-    return row?.preferred_lang || "English";
+    return result.rows[0]?.preferred_lang || "English";
   } catch (err) {
-    console.error("⚠️ getUserLang error:", err);
+    console.error("⚠️ PostgreSQL getUserLang error:", err);
     return "English";
   }
 }
 
 async function setUserLang(id, lang) {
   try {
-    await db.run(
-      "INSERT OR REPLACE INTO users (id, preferred_lang) VALUES (?, ?)",
+    await pg.query(
+      `INSERT INTO users (id, preferred_lang)
+       VALUES ($1, $2)
+       ON CONFLICT (id) DO UPDATE SET preferred_lang = EXCLUDED.preferred_lang`,
       [id, lang]
     );
   } catch (err) {
-    console.error("⚠️ setUserLang error:", err);
+    console.error("❌ PostgreSQL setUserLang error:", err);
   }
 }
 
 // =============================================================
-// 🛡️ CORS + body parsing
+// Middleware
 // =============================================================
 app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-api-key"]
   })
 );
-
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/langs", express.static("langs"));
 
 // =============================================================
-// 🎙️ Safe Transcribe Audio (Whisper + ffmpeg conversion)
+// Transcription Function
 // =============================================================
 async function transcribeAudio(filePath) {
   try {
@@ -148,7 +116,7 @@ async function transcribeAudio(filePath) {
       {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: formData,
+        body: formData
       }
     );
 
@@ -157,12 +125,7 @@ async function transcribeAudio(filePath) {
     fs.unlinkSync(filePath);
     fs.unlinkSync(tempWav);
 
-    if (!data.text || !data.text.trim()) {
-      console.warn("⚠️ Whisper returned no text — check audio clarity");
-      return "";
-    }
-
-    return data.text.trim();
+    return data.text?.trim() || "";
   } catch (err) {
     console.error("❌ Transcription error:", err);
     return "";
@@ -170,32 +133,30 @@ async function transcribeAudio(filePath) {
 }
 
 // =============================================================
-// 🧠 Language Detection (via GPT)
+// Language Detection
 // =============================================================
 async function detectLanguage(text) {
-  if (!text || text.trim().length === 0) return "Unknown";
+  if (!text.trim()) return "Unknown";
+
   try {
-    const response = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a language detector. Identify the language name only (e.g., English, French, Punjabi).",
-            },
-            { role: "user", content: text },
-          ],
-        }),
-      }
-    );
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a language detector. Return the language name only."
+          },
+          { role: "user", content: text }
+        ]
+      })
+    });
 
     const data = await response.json();
     return data?.choices?.[0]?.message?.content?.trim() || "Unknown";
@@ -206,54 +167,36 @@ async function detectLanguage(text) {
 }
 
 // =============================================================
-// 🌍 Translation Layer (GPT-4o-mini)
+// Translation
 // =============================================================
 async function translateText(text, targetLang = "English") {
   try {
-    if (!text || text.trim().length === 0) return text;
+    if (!text.trim()) return text;
 
-    const response = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: `
-                You are QUANTINA TRANSLATOR.
-                Your ONLY job is to translate text from the input language into ${targetLang}.
-                
-                STRICT RULES:
-                - DO NOT answer questions.
-                - DO NOT generate code.
-                - DO NOT explain anything.
-                - DO NOT be conversational.
-                - DO NOT provide examples.
-                - ONLY return the translated text.
-                - If the text is already in the target language, return it EXACTLY as-is.
-              `,
-            },
-            { role: "user", content: text },
-          ],
-        }),
-      }
-    );
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `
+              You are QUANTINA TRANSLATOR.
+              ONLY translate to ${targetLang}.
+              No explanations. No examples. Return translation only.
+            `
+          },
+          { role: "user", content: text }
+        ]
+      })
+    });
 
-    const result = await response.json();
-    const translatedText = result?.choices?.[0]?.message?.content?.trim();
-
-    if (!translatedText) {
-      console.warn("⚠️ No translation found, returning original text.");
-      return text;
-    }
-
-    return translatedText;
+    const data = await response.json();
+    return data?.choices?.[0]?.message?.content?.trim() || text;
   } catch (err) {
     console.error("❌ translateText error:", err);
     return text;
@@ -261,135 +204,110 @@ async function translateText(text, targetLang = "English") {
 }
 
 // =============================================================
-// 📦 File Upload Handler (Multer)
+// File Upload Handler
 // =============================================================
 const upload = multer({ dest: "uploads/" });
 
 // =============================================================
-// 🧠 Main Endpoint: /api/peer-message  (HYBRID: HTTP in → Socket out)
+// Main /api/peer-message Endpoint
 // =============================================================
-app.post(
-  "/api/peer-message",
-  upload.single("audio"),
-  async (req, res) => {
-    try {
-      // Support both JSON (text) and multipart (voice)
-      const { sender_id, receiver_id, text, body, mode } = req.body;
+app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
+  try {
+    const { sender_id, receiver_id, text, body, mode } = req.body;
+    let message = body || text || "";
 
-      // Prefer "body" (what your app/peer sends), fallback to "text"
-      let message = body || text || "";
-
-      if (!sender_id || !receiver_id) {
-        return res.status(400).json({
-          success: false,
-          error: "sender_id and receiver_id are required",
-        });
-      }
-
-      // 🎙️ Voice transcription
-      if (mode === "voice" && req.file) {
-        console.log(`🎙️ Voice received from ${sender_id}: ${req.file.path}`);
-        message = await transcribeAudio(req.file.path);
-      }
-
-      // If still empty, don't try to be fancy
-      if (!message || !message.trim()) {
-        console.warn("⚠️ Empty message payload, skipping translation");
-        return res.json({
-          success: true,
-          sender_language: "Unknown",
-          receiver_language: "Unknown",
-          original: "",
-          translated: "",
-        });
-      }
-
-      // 🌍 Language detection & translation
-      const senderLang = await detectLanguage(message);
-      const receiverLang = await getUserLang(receiver_id);
-      const translated = await translateText(message, receiverLang);
-
-      await setUserLang(sender_id, senderLang);
-
-      console.log(`🟢 Processed (${mode || "text"}) ${sender_id} → ${receiver_id}`);
-
-      // 🔥 REAL-TIME DELIVERY over socket
-      const targetSocketIds = userSockets.get(receiver_id);
-
-if (targetSocketIds && targetSocketIds.size > 0) {
-    for (const id of targetSocketIds) {
-        io.to(id).emit("p2p_incoming", {
-            fromUserId: sender_id,
-            toUserId: receiver_id,
-           audio:mode === "voice" ? true : false,
-body_raw: message,
-body_translated: translated,
-
-            source_lang: senderLang,
-            target_lang: receiverLang,
-        });
-    }
-} else {
-    console.log("⚠️ Receiver is not live:", receiver_id);
-}
-
-      // Response back to sender (for UI if needed)
-      res.json({
-        success: true,
-        sender_language: senderLang,
-        receiver_language: receiverLang,
-        original: message,
-        translated,
+    if (!sender_id || !receiver_id) {
+      return res.status(400).json({
+        success: false,
+        error: "sender_id and receiver_id are required"
       });
-    } catch (err) {
-      console.error("❌ /api/peer-message failed:", err);
-      res.status(500).json({ success: false, error: err.message });
     }
+
+    if (mode === "voice" && req.file) {
+      message = await transcribeAudio(req.file.path);
+    }
+
+    if (!message.trim()) {
+      return res.json({
+        success: true,
+        sender_language: "Unknown",
+        receiver_language: "Unknown",
+        original: "",
+        translated: ""
+      });
+    }
+
+    const senderLang = await detectLanguage(message);
+    const receiverLang = await getUserLang(receiver_id);
+    const translated = await translateText(message, receiverLang);
+
+    await setUserLang(sender_id, senderLang);
+
+    // Store original message in Postgres
+    try {
+      await pg.query(
+        `INSERT INTO messages (sender_id, receiver_id, body)
+         VALUES ($1, $2, $3)`,
+        [sender_id, receiver_id, message]
+      );
+    } catch (err) {
+      console.error("❌ Postgres insert error:", err);
+    }
+
+    // Real-time socket delivery
+    const receivers = userSockets.get(receiver_id);
+    if (receivers) {
+      receivers.forEach((sockId) => {
+        io.to(sockId).emit("p2p_incoming", {
+          fromUserId: sender_id,
+          toUserId: receiver_id,
+          audio: mode === "voice",
+          body_raw: message,
+          body_translated: translated,
+          source_lang: senderLang,
+          target_lang: receiverLang
+        });
+      });
+    }
+
+    res.json({
+      success: true,
+      sender_language: senderLang,
+      receiver_language: receiverLang,
+      original: message,
+      translated
+    });
+  } catch (err) {
+    console.error("❌ /api/peer-message failed:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
-);
+});
 
 // =============================================================
-// 🌍 Utility Routes
+// GET /api/users (Postgres Version)
 // =============================================================
 app.get("/api/users", async (req, res) => {
   try {
-    const rows = await db.all("SELECT * FROM users");
-    res.json(rows);
+    const result = await pg.query("SELECT * FROM users");
+    res.json(result.rows);
   } catch (err) {
     console.error("❌ /api/users error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get("/", (req, res) => {
-  res.send(`
-    <html>
-      <head><title>Quantina Core v4.0</title></head>
-      <body style="font-family:Arial;text-align:center;margin-top:120px;">
-        <h1>🤖 Quantina Core AI Translation Relay v4.0</h1>
-        <p>Status: <b>Online</b></p>
-        <p>Persistence: SQLite Database</p>
-        <p>POST endpoint: <code>/api/peer-message</code></p>
-        <p>GET users: <code>/api/users</code></p>
-      </body>
-    </html>
-  `);
-});
-
 // =============================================================
-// 🌡️ Health check
+// Health Check
 // =============================================================
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Quantina Core is alive" });
 });
-// =============================================================
-//  USER ↔ SOCKET MAPPING + REALTIME ROUTING ENGINE
-// =============================================================
 
-// Stores:  userId → Set(socketIds)
+// =============================================================
+// Socket Routing Engine
+// =============================================================
 const userSockets = new Map();
 
-// Middleware: Attach userId from handshake.auth
 io.use((socket, next) => {
   const userId = socket.handshake.auth?.userId;
   if (!userId) return next(new Error("Missing userId"));
@@ -400,58 +318,37 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
   const userId = socket.userId;
 
-  // Register socket
-  if (!userSockets.has(userId)) {
-    userSockets.set(userId, new Set());
-  }
+  if (!userSockets.has(userId)) userSockets.set(userId, new Set());
   userSockets.get(userId).add(socket.id);
 
-  console.log(`🟢 User ${userId} connected on socket ${socket.id}`);
-  console.log("📌 Current map:", userSockets);
-
-  // ROUTING: Handle outgoing P2P messages
   socket.on("p2p_outgoing", (msg) => {
     const { fromUserId, toUserId, body } = msg;
 
-    console.log(`📨 ROUTE ${fromUserId} → ${toUserId}:`, body);
+    const receivers = userSockets.get(toUserId);
+    if (!receivers) return;
 
-    const targetSockets = userSockets.get(toUserId);
-    if (!targetSockets || targetSockets.size === 0) {
-      console.log(`⚠️ ${toUserId} is offline`);
-      return;
-    }
-
-    // Deliver to all active sockets of receiver
-    for (const sockId of targetSockets) {
+    receivers.forEach((sockId) => {
       io.to(sockId).emit("p2p_incoming", {
         fromUserId,
         toUserId,
         body,
         timestamp: Date.now()
       });
-    }
+    });
   });
 
-  // Cleanup on disconnect
   socket.on("disconnect", () => {
-    if (userSockets.has(userId)) {
-      userSockets.get(userId).delete(socket.id);
-      if (userSockets.get(userId).size === 0) {
-        userSockets.delete(userId);
-      }
+    const set = userSockets.get(userId);
+    if (set) {
+      set.delete(socket.id);
+      if (set.size === 0) userSockets.delete(userId);
     }
-    console.log(`🔴 ${userId} disconnected socket ${socket.id}`);
   });
 });
 
 // =============================================================
-// ⚡ Socket Layer – only for delivery + presence
+// Start Server
 // =============================================================
-
-
-// =============================================================
-// 🚀 Start Express + Socket Server
-// =============================================================
-server.listen(PORT, () => {
-  console.log(`✅ Quantina Core Live Socket running on port ${PORT}`);
-});
+server.listen(PORT, () =>
+  console.log(`✅ Quantina Core running on port ${PORT}`)
+);
