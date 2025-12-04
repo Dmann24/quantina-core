@@ -11,7 +11,23 @@ import { execSync } from "child_process";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 
+import pkg from 'pg';
+const { Pool } = pkg;
+
 dotenv.config();
+// =============================
+// PostgreSQL Connection Pool
+// =============================
+const pg = new Pool({
+  host: process.env.PGHOST,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
+  database: process.env.PGDATABASE,
+  port: process.env.PGPORT,
+  ssl: { rejectUnauthorized: false }
+});
+
+
 
 const app = express();
 const server = createServer(app);
