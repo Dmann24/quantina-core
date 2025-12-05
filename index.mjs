@@ -9,9 +9,7 @@ import FormData from "form-data";
 import dotenv from "dotenv";
 import { execSync } from "child_process";
 
-import pkg from "pg";
-const { Pool } = pkg;
-
+// Load environment variables first
 dotenv.config();
 
 // =============================
@@ -25,7 +23,9 @@ const pg = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-
+// =============================
+// Express + Socket Setup
+// =============================
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
@@ -83,6 +83,7 @@ async function setUserLang(id, lang) {
     console.error("❌ PostgreSQL setUserLang error:", err);
   }
 }
+
 
 // =============================================================
 // Middleware
