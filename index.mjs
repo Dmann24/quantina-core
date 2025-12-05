@@ -17,14 +17,14 @@ dotenv.config();
 // =============================
 // PostgreSQL Connection Pool
 // =============================
+import pkg from "pg";
+const { Pool } = pkg;
+
 const pg = new Pool({
-  host: process.env.PGHOST,
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  database: process.env.PGDATABASE,
-  port: process.env.PGPORT,
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
 
 const app = express();
 const server = createServer(app);
