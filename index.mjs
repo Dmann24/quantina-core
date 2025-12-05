@@ -9,12 +9,11 @@ import FormData from "form-data";
 import dotenv from "dotenv";
 import { execSync } from "child_process";
 
-// Load environment variables first
 dotenv.config();
 
-// =============================
-// PostgreSQL Connection Pool
-// =============================
+// =============================================================
+// PostgreSQL CONNECTION
+// =============================================================
 import pkg from "pg";
 const { Pool } = pkg;
 
@@ -24,12 +23,13 @@ const pg = new Pool({
 });
 
 pg.connect()
-  .then(() => console.log("✅ PostgreSQL connected successfully!"))
-  .catch(err => console.error("❌ PostgreSQL connection failed:", err));
+  .then(() => console.log("🟢 [DB] PostgreSQL connected successfully"))
+  .catch(err => console.error("🔴 [DB ERROR] Failed to connect:", err));
 
-// =============================
-// Express + Socket Setup
-// =============================
+
+// =============================================================
+// EXPRESS + SOCKET.IO SETUP
+// =============================================================
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
@@ -38,9 +38,7 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 8080;
 
-// =============================================================
-// Allow OPTIONS
-// =============================================================
+// Allow preflight
 app.options("*", (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -49,18 +47,23 @@ app.options("*", (req, res) => {
 });
 
 // =============================================================
-// API-KEY FIREWALL
+// API KEY FIREWALL
 // =============================================================
 app.use((req, res, next) => {
+  if (req.method === "OPTIONS") return next();
+
   const clientKey = req.headers["x-api-key"];
   if (!clientKey || clientKey !== process.env.MASTER_KEY) {
+    console.log("🔴 [AUTH] Blocked request - invalid API KEY");
     return res.status(403).json({ error: "Forbidden: Invalid API Key" });
   }
+
   next();
 });
 
+
 // =============================================================
-// User Language Helpers (Postgres Only)
+// USER LANGUAGE HELPERS
 // =============================================================
 async function getUserLang(id) {
   try {
@@ -68,9 +71,12 @@ async function getUserLang(id) {
       "SELECT preferred_lang FROM users WHERE id=$1",
       [id]
     );
+
+    console.log("🟣 [DB] getUserLang:", id, "=>", result.rows[0]?.preferred_lang);
+
     return result.rows[0]?.preferred_lang || "English";
   } catch (err) {
-    console.error("⚠️ PostgreSQL getUserLang error:", err);
+    console.error("🔴 [DB ERROR] getUserLang:", err);
     return "English";
   }
 }
@@ -83,14 +89,16 @@ async function setUserLang(id, lang) {
        ON CONFLICT (id) DO UPDATE SET preferred_lang = EXCLUDED.preferred_lang`,
       [id, lang]
     );
+
+    console.log("🟣 [DB] setUserLang:", id, "=>", lang);
+
   } catch (err) {
-    console.error("❌ PostgreSQL setUserLang error:", err);
+    console.error("🔴 [DB ERROR] setUserLang:", err);
   }
 }
 
-
 // =============================================================
-// Middleware
+// MIDDLEWARE
 // =============================================================
 app.use(
   cors({
@@ -104,11 +112,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/langs", express.static("langs"));
 
+
 // =============================================================
-// Transcription Function
+// AUDIO TRANSCRIPTION
 // =============================================================
 async function transcribeAudio(filePath) {
   try {
+    console.log("🎤 [AUDIO] Transcribing:", filePath);
+
     const tempWav = `${filePath}.wav`;
     execSync(`ffmpeg -y -i ${filePath} -ac 1 -ar 16000 ${tempWav}`);
 
@@ -130,102 +141,118 @@ async function transcribeAudio(filePath) {
     fs.unlinkSync(filePath);
     fs.unlinkSync(tempWav);
 
+    console.log("🎤 [AUDIO] Transcribed text:", data.text);
+
     return data.text?.trim() || "";
   } catch (err) {
-    console.error("❌ Transcription error:", err);
+    console.error("🔴 [AUDIO ERROR] transcribeAudio:", err);
     return "";
   }
 }
 
+
 // =============================================================
-// Language Detection
+// LANGUAGE DETECTION
 // =============================================================
 async function detectLanguage(text) {
-  if (!text.trim()) return "Unknown";
-
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a language detector. Return the language name only."
-          },
-          { role: "user", content: text }
-        ]
-      })
-    });
+    console.log("🌐 [LANG DETECT] Input:", text);
+
+    const response = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: "Return language name only." },
+            { role: "user", content: text }
+          ]
+        })
+      }
+    );
 
     const data = await response.json();
-    return data?.choices?.[0]?.message?.content?.trim() || "Unknown";
+    const lang = data?.choices?.[0]?.message?.content?.trim() || "Unknown";
+
+    console.log("🌐 [LANG DETECTED] =>", lang);
+    return lang;
   } catch (err) {
-    console.error("❌ detectLanguage error:", err);
+    console.error("🔴 [ERROR] detectLanguage:", err);
     return "Unknown";
   }
 }
 
-// =============================================================
-// Translation
-// =============================================================
-async function translateText(text, targetLang = "English") {
-  try {
-    if (!text.trim()) return text;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `
-              You are QUANTINA TRANSLATOR.
-              ONLY translate to ${targetLang}.
-              No explanations. No examples. Return translation only.
-            `
-          },
-          { role: "user", content: text }
-        ]
-      })
-    });
+// =============================================================
+// TRANSLATION
+// =============================================================
+async function translateText(text, targetLang) {
+  try {
+    console.log("🔵 [TRANSLATE] =>", targetLang, " | TEXT:", text);
+
+    const response = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: `Translate ONLY into ${targetLang}.`
+            },
+            { role: "user", content: text }
+          ]
+        })
+      }
+    );
 
     const data = await response.json();
-    return data?.choices?.[0]?.message?.content?.trim() || text;
+    const translated = data?.choices?.[0]?.message?.content?.trim() || text;
+
+    console.log("🔵 [TRANSLATED] =>", translated);
+
+    return translated;
   } catch (err) {
-    console.error("❌ translateText error:", err);
+    console.error("🔴 [ERROR] translateText:", err);
     return text;
   }
 }
 
+
 // =============================================================
-// File Upload Handler
+// FILE UPLOAD
 // =============================================================
 const upload = multer({ dest: "uploads/" });
 
+
 // =============================================================
-// Main /api/peer-message Endpoint
+// MAIN API ENDPOINT
 // =============================================================
 app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
+  console.log("📩 [API] Incoming peer-message:", {
+    sender: req.body.sender_id,
+    receiver: req.body.receiver_id,
+    mode: req.body.mode,
+    ts: new Date().toISOString()
+  });
+
   try {
     const { sender_id, receiver_id, text, body, mode } = req.body;
     let message = body || text || "";
 
     if (!sender_id || !receiver_id) {
-      return res.status(400).json({
-        success: false,
-        error: "sender_id and receiver_id are required"
-      });
+      console.log("🔴 [API ERROR] Missing sender or receiver");
+      return res.status(400).json({ error: "sender_id and receiver_id required" });
     }
 
     if (mode === "voice" && req.file) {
@@ -233,6 +260,7 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
     }
 
     if (!message.trim()) {
+      console.log("⚪ [API] Empty message");
       return res.json({
         success: true,
         sender_language: "Unknown",
@@ -242,26 +270,30 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       });
     }
 
+    // Language processing
     const senderLang = await detectLanguage(message);
     const receiverLang = await getUserLang(receiver_id);
     const translated = await translateText(message, receiverLang);
 
     await setUserLang(sender_id, senderLang);
 
-    // Store original message in Postgres
+    // Store in DB
     try {
       await pg.query(
         `INSERT INTO messages (sender_id, receiver_id, body)
          VALUES ($1, $2, $3)`,
         [sender_id, receiver_id, message]
       );
+      console.log("💾 [DB] Message saved");
     } catch (err) {
-      console.error("❌ Postgres insert error:", err);
+      console.error("🔴 [DB ERROR] Insert message:", err);
     }
 
     // Real-time socket delivery
     const receivers = userSockets.get(receiver_id);
     if (receivers) {
+      console.log("📡 [SOCKET] Delivering to:", receivers);
+
       receivers.forEach((sockId) => {
         io.to(sockId).emit("p2p_incoming", {
           fromUserId: sender_id,
@@ -275,6 +307,8 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       });
     }
 
+    console.log("✅ [API] Message processed");
+
     res.json({
       success: true,
       sender_language: senderLang,
@@ -282,40 +316,43 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       original: message,
       translated
     });
-  } catch (err) {
-    console.error("❌ /api/peer-message failed:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
-// =============================================================
-// GET /api/users (Postgres Version)
-// =============================================================
-app.get("/api/users", async (req, res) => {
-  try {
-    const result = await pg.query("SELECT * FROM users");
-    res.json(result.rows);
   } catch (err) {
-    console.error("❌ /api/users error:", err);
+    console.error("🔴 [API ERROR] /api/peer-message:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// =============================================================
-// Health Check
-// =============================================================
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "Quantina Core is alive" });
-});
 
 // =============================================================
-// Socket Routing Engine
+// USER LIST
+// =============================================================
+app.get("/api/users", async (req, res) => {
+  console.log("📋 [API] /api/users requested");
+
+  try {
+    const result = await pg.query("SELECT * FROM users");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("🔴 [API ERROR] /api/users:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// =============================================================
+// SOCKET ENGINE
 // =============================================================
 const userSockets = new Map();
 
 io.use((socket, next) => {
   const userId = socket.handshake.auth?.userId;
-  if (!userId) return next(new Error("Missing userId"));
+
+  if (!userId) {
+    console.log("🔴 [SOCKET] Missing userId, rejecting connection");
+    return next(new Error("Missing userId"));
+  }
+
   socket.userId = userId;
   next();
 });
@@ -323,26 +360,33 @@ io.use((socket, next) => {
 io.on("connection", (socket) => {
   const userId = socket.userId;
 
+  console.log(`🔌 [SOCKET] CONNECTED => userId=${userId}, socket=${socket.id}`);
+
   if (!userSockets.has(userId)) userSockets.set(userId, new Set());
   userSockets.get(userId).add(socket.id);
 
   socket.on("p2p_outgoing", (msg) => {
-    const { fromUserId, toUserId, body } = msg;
+    console.log("📡 [SOCKET OUT]", msg);
 
-    const receivers = userSockets.get(toUserId);
-    if (!receivers) return;
+    const receivers = userSockets.get(msg.toUserId);
+    if (!receivers) {
+      console.log("⚪ [SOCKET] No receivers online");
+      return;
+    }
 
     receivers.forEach((sockId) => {
       io.to(sockId).emit("p2p_incoming", {
-        fromUserId,
-        toUserId,
-        body,
+        ...msg,
         timestamp: Date.now()
       });
     });
+
+    console.log("📨 [SOCKET] Delivered to:", [...receivers]);
   });
 
   socket.on("disconnect", () => {
+    console.log(`🔌 [SOCKET] DISCONNECTED => socket=${socket.id}`);
+
     const set = userSockets.get(userId);
     if (set) {
       set.delete(socket.id);
@@ -351,9 +395,10 @@ io.on("connection", (socket) => {
   });
 });
 
+
 // =============================================================
-// Start Server
+// START SERVER
 // =============================================================
 server.listen(PORT, () =>
-  console.log(`✅ Quantina Core running on port ${PORT}`)
+  console.log(`🚀 Quantina Core running on port ${PORT}`)
 );
