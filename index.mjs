@@ -22,6 +22,9 @@ const pg = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+pg.connect()
+  .then(() => console.log("✅ PostgreSQL connected successfully!"))
+  .catch(err => console.error("❌ PostgreSQL connection failed:", err));
 
 // =============================
 // Express + Socket Setup
