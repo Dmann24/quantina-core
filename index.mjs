@@ -234,7 +234,7 @@ async function translateText(text, targetLang) {
 // =============================================================
 const upload = multer({ dest: "uploads/" });
 // =============================================================
-// LIVE CAMERA SCAN → OCR → TRANSLATE ENDPOINT
+// LIVE CAMERA SCAN → OPENAI VISION → TRANSLATE
 // =============================================================
 app.post("/api/scan-translate", async (req, res) => {
   try {
@@ -249,9 +249,11 @@ app.post("/api/scan-translate", async (req, res) => {
       return res.status(400).json({ error: "Missing image_base64" });
     }
 
-    // -------------------------
-    // 1️⃣ OCR using OpenAI Vision (Whisper Vision replacement)
-    // -------------------------
+    console.log("🖼️ [SCAN] Received image for OCR + translation");
+
+    // ---------------------------------------------------------
+    // 1️⃣ OCR USING OPENAI VISION (CORRECT 2025 API FORMAT)
+    // ---------------------------------------------------------
     const ocrResponse = await fetch(
       "https://api.openai.com/v1/chat/completions",
       {
@@ -267,12 +269,12 @@ app.post("/api/scan-translate", async (req, res) => {
               role: "user",
               content: [
                 {
-                  type: "input_text",
-                  text: "Extract all visible text from this image. Return ONLY the text."
-                },
-                {
                   type: "input_image",
                   image_url: `data:image/jpeg;base64,${image_base64}`
+                },
+                {
+                  type: "text",
+                  text: "Extract all readable text from this image. DO NOT translate. DO NOT summarize. Return ONLY raw OCR text."
                 }
               ]
             }
@@ -281,31 +283,30 @@ app.post("/api/scan-translate", async (req, res) => {
       }
     );
 
-    const ocrData = await ocrResponse.json();
-    const rawText =
-      ocrData?.choices?.[0]?.message?.content?.trim() || "";
+    const ocrJSON = await ocrResponse.json();
+    const rawText = ocrJSON?.choices?.[0]?.message?.content?.trim() || "";
 
-    console.log("📄 [OCR RESULT] =>", rawText);
+    console.log("📄 [VISION OCR RESULT] =>", rawText);
 
-    // -------------------------
-    // 2️⃣ Translate using existing translateText()
-    // -------------------------
-    const translated = await translateText(rawText, target_language);
+    // ---------------------------------------------------------
+    // 2️⃣ TRANSLATE USING YOUR EXISTING translateText()
+    // ---------------------------------------------------------
+    const translatedText = await translateText(rawText, target_language);
 
-    console.log("🌍 [TRANSLATED] =>", translated);
+    console.log("🌍 [VISION TRANSLATED RESULT] =>", translatedText);
 
-    // -------------------------
-    // 3️⃣ Return result to Android
-    // -------------------------
+    // ---------------------------------------------------------
+    // 3️⃣ SEND BACK TO ANDROID
+    // ---------------------------------------------------------
     return res.json({
       success: true,
       raw_text: rawText,
-      translated_text: translated
+      translated_text: translatedText
     });
 
   } catch (err) {
-    console.error("🔴 [API ERROR] /api/scan-translate:", err);
-    res.status(500).json({ error: "scan-translate failed" });
+    console.error("🔴 [VISION ERROR] scan-translate:", err);
+    res.status(500).json({ error: "Vision OCR/translation failed" });
   }
 });
 
