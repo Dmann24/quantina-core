@@ -238,6 +238,7 @@ const upload = multer({ dest: "uploads/" });
 // =============================================================
 app.post("/api/scan-translate", async (req, res) => {
   try {
+    // Security
     const apiKey = req.headers["x-api-key"];
     if (apiKey !== process.env.MASTER_KEY) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -252,60 +253,67 @@ app.post("/api/scan-translate", async (req, res) => {
     console.log("🖼️ [SCAN] Received image for OCR + translation");
 
     // ---------------------------------------------------------
-    // 1️⃣ OCR USING OPENAI VISION (CORRECT 2025 API FORMAT)
+    // 1️⃣ OCR USING OPENAI VISION (2025 API FORMAT)
     // ---------------------------------------------------------
-const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
+    const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
+      },
+      body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
-            {
-                role: "user",
-                content: [
-                    {
-                        type: "input_image",
-                        image_url: `data:image/jpeg;base64,${image_base64}`,
-                    },
-                    {
-                        type: "text",
-                        text: `
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_image",
+                image_url: `data:image/jpeg;base64,${image_base64}`
+              },
+              {
+                type: "text",
+                text: `
 You are an OCR extractor.
-Read ANY visible text (even faint, blurry, or incomplete).
-Return ALL text found.
-Do NOT translate.
+Extract ALL visible text — even faint, blurry, partial or messy.
+Return EXACT text as seen.
 Do NOT summarize.
+Do NOT translate.
+Do NOT say “no text found.”
+If unsure, guess the closest letters.
 Return ONLY raw text.
 `
-                    }
-                ]
-            }
+              }
+            ]
+          }
         ]
-    })
-});
+      })
+    });
 
-const ocrJSON = await ocrResponse.json();
-const rawText = ocrJSON?.choices?.[0]?.message?.content?.trim() || "";
-console.log("[VISION OCR RESULT] =>", rawText);
+    const ocrJSON = await ocrResponse.json();
+    const rawText = ocrJSON?.choices?.[0]?.message?.content?.trim() || "";
 
-
-    // ---------------------------------------------------------
-    // 2️⃣ TRANSLATE USING YOUR EXISTING translateText()
-    // ---------------------------------------------------------
-    const translatedText = await translateText(rawText, target_language);
-
-    console.log("🌍 [VISION TRANSLATED RESULT] =>", translatedText);
+    console.log("[VISION OCR RESULT] =>", rawText);
 
     // ---------------------------------------------------------
-    // 3️⃣ SEND BACK TO ANDROID
+    // 2️⃣ TRANSLATE RAW OCR TEXT TO TARGET LANGUAGE
+    // ---------------------------------------------------------
+    let translated = "";
+
+    if (rawText.length > 0) {
+      translated = await translateText(rawText, target_language);
+      console.log("[VISION TRANSLATED RESULT] =>", translated);
+    } else {
+      console.log("[VISION TRANSLATION] => No OCR text extracted");
+    }
+
+    // ---------------------------------------------------------
+    // 3️⃣ RETURN RESULT TO ANDROID
     // ---------------------------------------------------------
     return res.json({
       success: true,
       raw_text: rawText,
-      translated_text: translatedText
+      translated_text: translated
     });
 
   } catch (err) {
@@ -313,6 +321,7 @@ console.log("[VISION OCR RESULT] =>", rawText);
     res.status(500).json({ error: "Vision OCR/translation failed" });
   }
 });
+
 
 
 // =============================================================
