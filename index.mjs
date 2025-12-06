@@ -233,6 +233,81 @@ async function translateText(text, targetLang) {
 // FILE UPLOAD
 // =============================================================
 const upload = multer({ dest: "uploads/" });
+// =============================================================
+// LIVE CAMERA SCAN → OCR → TRANSLATE ENDPOINT
+// =============================================================
+app.post("/api/scan-translate", async (req, res) => {
+  try {
+    const apiKey = req.headers["x-api-key"];
+    if (apiKey !== process.env.MASTER_KEY) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { image_base64, target_language } = req.body;
+
+    if (!image_base64) {
+      return res.status(400).json({ error: "Missing image_base64" });
+    }
+
+    // -------------------------
+    // 1️⃣ OCR using OpenAI Vision (Whisper Vision replacement)
+    // -------------------------
+    const ocrResponse = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: "Extract all visible text from this image. Return ONLY the text."
+                },
+                {
+                  type: "input_image",
+                  image_url: `data:image/jpeg;base64,${image_base64}`
+                }
+              ]
+            }
+          ]
+        })
+      }
+    );
+
+    const ocrData = await ocrResponse.json();
+    const rawText =
+      ocrData?.choices?.[0]?.message?.content?.trim() || "";
+
+    console.log("📄 [OCR RESULT] =>", rawText);
+
+    // -------------------------
+    // 2️⃣ Translate using existing translateText()
+    // -------------------------
+    const translated = await translateText(rawText, target_language);
+
+    console.log("🌍 [TRANSLATED] =>", translated);
+
+    // -------------------------
+    // 3️⃣ Return result to Android
+    // -------------------------
+    return res.json({
+      success: true,
+      raw_text: rawText,
+      translated_text: translated
+    });
+
+  } catch (err) {
+    console.error("🔴 [API ERROR] /api/scan-translate:", err);
+    res.status(500).json({ error: "scan-translate failed" });
+  }
+});
 
 
 // =============================================================
