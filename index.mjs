@@ -251,9 +251,9 @@ app.post("/api/scan-translate", async (req, res) => {
 
     console.log("🖼️ [SCAN] Received image for OCR + translation");
 
-// ---------------------------------------------------------
-// 1️⃣ OCR USING OPENAI VISION (2025 API FORMAT)
-// ---------------------------------------------------------
+    // ---------------------------------------------------------
+    // 1️⃣ OCR USING OPENAI VISION (CORRECT 2025 API FORMAT)
+    // ---------------------------------------------------------
 const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -268,16 +268,16 @@ const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
                 content: [
                     {
                         type: "input_image",
-                        image_url: `data:image/jpeg;base64,${image_base64}`
+                        image_url: `data:image/jpeg;base64,${image_base64}`,
                     },
                     {
                         type: "text",
                         text: `
 You are an OCR extractor.
 Read ANY visible text (even faint, blurry, or incomplete).
-Return ALL text found, exactly as-is.
-Do NOT summarize.
+Return ALL text found.
 Do NOT translate.
+Do NOT summarize.
 Return ONLY raw text.
 `
                     }
@@ -289,41 +289,30 @@ Return ONLY raw text.
 
 const ocrJSON = await ocrResponse.json();
 const rawText = ocrJSON?.choices?.[0]?.message?.content?.trim() || "";
-
 console.log("[VISION OCR RESULT] =>", rawText);
 
-// ---------------------------------------------------------
-// 2️⃣ TRANSLATE OCR → USER'S PREFERRED LANGUAGE
-// ---------------------------------------------------------
-if (rawText.length > 0) {
-    const translated = await translateText(rawText, preferredLang);
 
-    console.log("[VISION TRANSLATED RESULT] =>", translated);
+    // ---------------------------------------------------------
+    // 2️⃣ TRANSLATE USING YOUR EXISTING translateText()
+    // ---------------------------------------------------------
+    const translatedText = await translateText(rawText, target_language);
 
-    // Send translated text to Android chat UI
-    io.to(receiverSocket).emit("incoming_message", {
-        fromUserId: senderId,
-        body: translated,
-        type: "text"
-    });
+    console.log("🌍 [VISION TRANSLATED RESULT] =>", translatedText);
 
+    // ---------------------------------------------------------
+    // 3️⃣ SEND BACK TO ANDROID
+    // ---------------------------------------------------------
     return res.json({
-        success: true,
-        raw_text: rawText,
-        translated_text: translated
+      success: true,
+      raw_text: rawText,
+      translated_text: translatedText
     });
 
-} else {
-
-    console.log("[VISION TRANSLATION] => No text found.");
-
-    return res.json({
-        success: true,
-        raw_text: "",
-        translated_text: ""
-    });
-}
-
+  } catch (err) {
+    console.error("🔴 [VISION ERROR] scan-translate:", err);
+    res.status(500).json({ error: "Vision OCR/translation failed" });
+  }
+});
 
 
 // =============================================================
