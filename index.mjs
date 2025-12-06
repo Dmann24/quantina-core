@@ -252,75 +252,56 @@ app.post("/api/scan-translate", async (req, res) => {
 
     console.log("🖼️ [SCAN] Received image for OCR + translation");
 
-    // ---------------------------------------------------------
-    // 1️⃣ OCR USING OPENAI VISION (2025 API FORMAT)
-    // ---------------------------------------------------------
-    const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
+ // 1️⃣ OCR USING OPENAI VISION
+const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+  },
+  body: JSON.stringify({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "user",
+        content: [
           {
-            role: "user",
-            content: [
-              {
-                type: "input_image",
-                image_url: `data:image/jpeg;base64,${image_base64}`
-              },
-              {
-                type: "text",
-                text: `
+            type: "input_image",
+            image_url: `data:image/png;base64,${image_base64}`  // FIX HERE
+          },
+          {
+            type: "text",
+            text: `
 You are an OCR extractor.
-Extract ALL visible text — even faint, blurry, partial or messy.
-Return EXACT text as seen.
-Do NOT summarize.
+Read ANY visible text — even faint, blurry, partial.
+Return ALL detected text.
 Do NOT translate.
-Do NOT say “no text found.”
-If unsure, guess the closest letters.
-Return ONLY raw text.
+Do NOT summarize.
+Return ONLY raw OCR text.
 `
-              }
-            ]
           }
         ]
-      })
-    });
-
-    const ocrJSON = await ocrResponse.json();
-    const rawText = ocrJSON?.choices?.[0]?.message?.content?.trim() || "";
-
-    console.log("[VISION OCR RESULT] =>", rawText);
-
-    // ---------------------------------------------------------
-    // 2️⃣ TRANSLATE RAW OCR TEXT TO TARGET LANGUAGE
-    // ---------------------------------------------------------
-    let translated = "";
-
-    if (rawText.length > 0) {
-      translated = await translateText(rawText, target_language);
-      console.log("[VISION TRANSLATED RESULT] =>", translated);
-    } else {
-      console.log("[VISION TRANSLATION] => No OCR text extracted");
-    }
-
-    // ---------------------------------------------------------
-    // 3️⃣ RETURN RESULT TO ANDROID
-    // ---------------------------------------------------------
-    return res.json({
-      success: true,
-      raw_text: rawText,
-      translated_text: translated
-    });
-
-  } catch (err) {
-    console.error("🔴 [VISION ERROR] scan-translate:", err);
-    res.status(500).json({ error: "Vision OCR/translation failed" });
-  }
+      }
+    ]
+  })
 });
+
+const ocrJSON = await ocrResponse.json();
+const rawText = ocrJSON?.choices?.[0]?.message?.content?.trim() || "";
+console.log("[VISION OCR RESULT] =>", rawText);
+
+// 2️⃣ TRANSLATE OCR TEXT USING USER'S PREFERRED LANGUAGE
+const translatedText = await translateText(rawText, target_language);
+
+console.log("🌍 [VISION TRANSLATED RESULT] =>", translatedText);
+
+// 3️⃣ SEND BACK TO ANDROID
+return res.json({
+  success: true,
+  raw_text: rawText,
+  translated_text: translatedText
+});
+
 
 
 
