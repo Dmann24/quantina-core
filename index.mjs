@@ -254,39 +254,43 @@ app.post("/api/scan-translate", async (req, res) => {
     // ---------------------------------------------------------
     // 1️⃣ OCR USING OPENAI VISION (CORRECT 2025 API FORMAT)
     // ---------------------------------------------------------
-    const ocrResponse = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
+const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
             {
-              role: "user",
-              content: [
-                {
-                  type: "input_image",
-                  image_url: `data:image/jpeg;base64,${image_base64}`
-                },
-                {
-                  type: "text",
-                  text: "Extract all readable text from this image. DO NOT translate. DO NOT summarize. Return ONLY raw OCR text."
-                }
-              ]
+                role: "user",
+                content: [
+                    {
+                        type: "input_image",
+                        image_url: `data:image/jpeg;base64,${image_base64}`,
+                    },
+                    {
+                        type: "text",
+                        text: `
+You are an OCR extractor.
+Read ANY visible text (even faint, blurry, or incomplete).
+Return ALL text found.
+Do NOT translate.
+Do NOT summarize.
+Return ONLY raw text.
+`
+                    }
+                ]
             }
-          ]
-        })
-      }
-    );
+        ]
+    })
+});
 
-    const ocrJSON = await ocrResponse.json();
-    const rawText = ocrJSON?.choices?.[0]?.message?.content?.trim() || "";
+const ocrJSON = await ocrResponse.json();
+const rawText = ocrJSON?.choices?.[0]?.message?.content?.trim() || "";
+console.log("[VISION OCR RESULT] =>", rawText);
 
-    console.log("📄 [VISION OCR RESULT] =>", rawText);
 
     // ---------------------------------------------------------
     // 2️⃣ TRANSLATE USING YOUR EXISTING translateText()
