@@ -254,48 +254,45 @@ app.post("/api/scan-translate", async (req, res) => {
     // ---------------------------------------------------------
     // 1️⃣ OCR USING OPENAI VISION
     // ---------------------------------------------------------
-    const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-            {
-                role: "user",
-                content: [
-                    {
-                        type: "input_image",
-                        image_url: `data:image/jpeg;base64,${image_base64}`,
-                    },
-                    {
-                        type: "text",
-                        text: `
+  const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+  },
+  body: JSON.stringify({
+    model: "gpt-4o-mini",
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_image",
+            image_url: `data:image/jpeg;base64,${image_base64}` // FIXED MIME TYPE
+          },
+          {
+            type: "text",
+            text: `
 You are an OCR extractor.
-Read ANY visible text.
-Return ALL text.
+Extract all visible text.
+Return ONLY raw text.
 Do NOT translate.
 Do NOT summarize.
-Return ONLY raw text.
 `
-                    }
-                ]
-            }
+          }
         ]
-    })
+      }
+    ]
+  })
 });
 
 const ocrJSON = await ocrResponse.json();
 
-// ----------------------------------------------
-// 🔍 LOGGING OCR RAW OUTPUT + CLEANED TEXT
-// ----------------------------------------------
-const ocrRaw = ocrJSON?.choices?.[0]?.message?.content;
+// 🔥 Correct 2025 OCR output path:
+const ocrRaw = ocrJSON?.output_text ?? "";
 console.log("📄 [VISION RAW MODEL OUTPUT] =>", ocrRaw);
 
-const rawText = (ocrRaw || "").trim();
+const rawText = ocrRaw.trim();
 console.log("🟦 [VISION OCR RESULT] =>", rawText);
 
 
