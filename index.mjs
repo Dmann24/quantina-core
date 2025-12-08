@@ -245,7 +245,7 @@ console.log("📦 Base64 size:", image_base64?.length || 0);
     // ---------------------------------------------------------
     // 1️⃣ OCR USING GPT-4o mini  (Vision-enabled)
     // ---------------------------------------------------------
-    const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
+  const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -258,12 +258,17 @@ console.log("📦 Base64 size:", image_base64?.length || 0);
         role: "user",
         content: [
           {
-            type: "input_text",
-            text: "Extract all visible text EXACTLY as shown. No summaries."
+            type: "image",
+            image: `data:image/jpeg;base64,${image_base64}`
           },
           {
-            type: "input_image",
-            image_url: `data:image/jpeg;base64,${image_base64}`
+            type: "text",
+            text: `
+Extract ALL visible text ONLY.
+Return RAW text.
+Do NOT translate.
+Do NOT summarize.
+`
           }
         ]
       }
@@ -273,7 +278,9 @@ console.log("📦 Base64 size:", image_base64?.length || 0);
 
 
 
-    const ocrJSON = await ocrResponse.json();
+
+    const ocrRaw = ocrJSON?.output_text ?? "";
+
 
     // Correct 2025 OCR output path
     const ocrRaw = ocrJSON?.output_text ?? "";
