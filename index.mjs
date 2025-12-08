@@ -243,33 +243,34 @@ app.post("/api/scan-translate", async (req, res) => {
 console.log("📦 Base64 size:", image_base64?.length || 0);
 
     // ---------------------------------------------------------
-    // 1️⃣ OCR USING GPT-4O  (Vision-enabled)
+    // 1️⃣ OCR USING GPT-4o mini  (Vision-enabled)
     // ---------------------------------------------------------
     const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
   },
   body: JSON.stringify({
-    model: "gpt-4.1",
+    model: "gpt-4o-mini",
     input: [
       {
         role: "user",
         content: [
           {
-            type: "input_image",
-            image_url: `data:image/jpeg;base64,${image_base64}`
+            type: "input_text",
+            text: "Extract all visible text EXACTLY as shown. No summaries."
           },
           {
-            type: "text",
-            text: "Extract ALL visible text. Return ONLY raw text. Do NOT translate."
+            type: "input_image",
+            image_url: `data:image/jpeg;base64,${image_base64}`
           }
         ]
       }
     ]
   })
 });
+
 
 
     const ocrJSON = await ocrResponse.json();
