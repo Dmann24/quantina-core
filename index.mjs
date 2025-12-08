@@ -57,13 +57,32 @@ app.options("*", (req, res) => {
 
 
 // =============================================================
-// API KEY FIREWALL
+// API KEY FIREWALL (UPDATED TO ALLOW SOCKET.IO + ROOT ACCESS)
 // =============================================================
+
+// Allow socket.io handshake without API key
+app.use((req, res, next) => {
+  if (req.path.startsWith("/socket.io/")) {
+    return next();
+  }
+  next();
+});
+
+// Allow base URL GET request without API key
+app.use((req, res, next) => {
+  if (req.method === "GET" && req.path === "/") {
+    return next();
+  }
+  next();
+});
+
+// Require API key for everything else
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") return next();
 
-  const key = req.headers["x-api-key"];
-  if (!key || key !== process.env.MASTER_KEY) {
+  const clientKey = req.headers["x-api-key"];
+
+  if (!clientKey || clientKey !== process.env.MASTER_KEY) {
     console.log("🔴 [AUTH BLOCK] Invalid API key");
     return res.status(403).json({ error: "Invalid API Key" });
   }
