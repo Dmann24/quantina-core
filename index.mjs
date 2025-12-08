@@ -210,7 +210,7 @@ const upload = multer({ dest: "uploads/" });
 
 
 // =============================================================
-// OCR + TRANSLATION (Vision)
+// OCR + TRANSLATION (OpenAI Responses API)
 // =============================================================
 app.post("/api/scan-translate", async (req, res) => {
   try {
@@ -218,36 +218,46 @@ app.post("/api/scan-translate", async (req, res) => {
 
     console.log("📸 OCR request received");
 
-    // ----------- OCR -----------
+    // 1️⃣ OCR EXTRACTION
     const ocr = await openai.responses.create({
       model: "gpt-4o-mini",
       input: [
         {
           role: "user",
-          type: "text",
-          text: "Extract all visible text from the image. Return ONLY the text."
-        },
-        {
-          role: "user",
-          type: "input_image",
-          image_url: `data:image/jpeg;base64,${image_base64}`
+          content: [
+            {
+              type: "input_text",
+              text: "Extract all visible text from the image. Return ONLY the text."
+            },
+            {
+              type: "input_image",
+              image_url: `data:image/jpeg;base64,${image_base64}`
+            }
+          ]
         }
       ]
     });
 
     const raw = ocr.output_text?.trim() || "";
     if (!raw) {
-      return res.json({ success: false, message: "No text detected." });
+      return res.json({
+        success: false,
+        message: "No text detected."
+      });
     }
 
-    // ----------- TRANSLATION -----------
+    // 2️⃣ TRANSLATION
     const translated = await openai.responses.create({
       model: "gpt-4o-mini",
       input: [
         {
           role: "user",
-          type: "text",
-          text: `Translate the following into ${target_language}:\n\n${raw}`
+          content: [
+            {
+              type: "input_text",
+              text: `Translate the following into ${target_language}:\n\n${raw}`
+            }
+          ]
         }
       ]
     });
@@ -255,7 +265,7 @@ app.post("/api/scan-translate", async (req, res) => {
     res.json({
       success: true,
       raw_text: raw,
-      translated_text: translated.output_text?.trim() || ""
+      translated_text: translated.output_text || ""
     });
 
   } catch (e) {
