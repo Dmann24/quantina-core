@@ -233,64 +233,71 @@ async function translateText(text, targetLang) {
 // FILE UPLOAD
 // =============================================================
 const upload = multer({ dest: "uploads/" });
-// =============================================================
-// LIVE CAMERA SCAN → OCR → TRANSLATION
-// =============================================================
+// ======================================================================
+//  LIVE CAMERA SCAN → OCR → TRANSLATION
+// ======================================================================
+
 app.post("/api/scan-translate", async (req, res) => {
   try {
     const { image_base64, target_language } = req.body;
-    console.log("🟨 [SCAN] Received image for OCR + translation");
-console.log("📦 Base64 size:", image_base64?.length || 0);
 
-// ---------------------------------------------------------
-// 1️⃣ OCR USING GPT-4o mini (Vision-enabled)
-// ---------------------------------------------------------
-const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-  },
-  body: JSON.stringify({
-    model: "gpt-4o-mini",
-    input: [
-      {
-        role: "user",
-        type: "input_text",
-        text: "Extract ALL visible text EXACTLY as written. No summaries."
+    console.log("📸 [SCAN] Received image for OCR + translation");
+    console.log("📦 Base64 size:", image_base64?.length || 0);
+
+    if (!image_base64 || image_base64.length < 1000) {
+      return res.json({
+        success: false,
+        raw_text: "",
+        translated_text: "",
+        message: "Invalid or empty image received."
+      });
+    }
+
+    // ==================================================================
+    // 1️⃣  OCR USING GPT-4o-mini  (correct 2025 format)
+    // ==================================================================
+    const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
       },
-      {
-        role: "user",
-        type: "input_image",
-        image_url: `data:image/jpeg;base64,${image_base64}`
-      }
-    ]
-  })
-});
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: [
+          {
+            type: "input_image",
+            image_url: `data:image/jpeg;base64,${image_base64}`
+          },
+          {
+            type: "text",
+            text: "Extract ALL visible text EXACTLY as shown. No summaries. No translations."
+          }
+        ]
+      })
+    });
 
+    const ocrJSON = await ocrResponse.json();
 
-const ocrJSON = await ocrResponse.json();
+    // Correct 2025 path
+    const rawOCR = ocrJSON?.output_text ?? "";
+    const rawText = rawOCR.trim();
 
-// 2025 OpenAI Response Path
-const ocrRaw = ocrJSON?.output_text ?? "";
-console.log("📘 [VISION RAW MODEL OUTPUT] =>", ocrRaw);
+    console.log("📝 [VISION RAW OUTPUT] =>", rawOCR);
+    console.log("🟦 [VISION OCR RESULT] =>", rawText);
 
-const rawText = (ocrRaw || "").trim();
-console.log("📗 [VISION OCR RESULT] =>", rawText);
+    if (!rawText || rawText.length < 2) {
+      return res.json({
+        success: false,
+        raw_text: "",
+        translated_text: "",
+        message: "No text detected."
+      });
+    }
 
-if (!rawText || rawText.length < 2) {
-  return res.json({
-    success: false,
-    raw_text: "",
-    translated_text: "",
-    message: "No text detected."
-  });
-}
-
-
-    // ---------------------------------------------------------
-    // 2️⃣ TRANSLATE USING GPT-4O-MINI
-    // ---------------------------------------------------------
+    // ==================================================================
+    // 2️⃣ TRANSLATE TEXT USING GPT-4o-mini
+    // ==================================================================
     const translateResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -302,22 +309,37 @@ if (!rawText || rawText.length < 2) {
         input: [
           {
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: `
-Translate the following text into ${target_language}.
-Return only the translated text. No extra words.
-
-Text:
-${rawText}
-`
-              }
-            ]
+            content: `Translate the following text into ${target_language}. Return ONLY the translation:\n\n${rawText}`
           }
         ]
       })
     });
+
+    const translateJSON = await translateResponse.json();
+    const translatedText = translateJSON?.output_text?.trim() ?? "";
+
+    console.log("🌍 [TRANSLATED RESULT] =>", translatedText);
+
+    // ==================================================================
+    // 3️⃣ FINAL RESPONSE BACK TO ANDROID
+    // ==================================================================
+    res.json({
+      success: true,
+      raw_text: rawText,
+      translated_text: translatedText
+    });
+
+  } catch (err) {
+    console.error("❌ [SCAN ERROR] =>", err);
+    res.status(500).json({
+      success: false,
+      raw_text: "",
+      translated_text: "",
+      message: "OCR or translation failed."
+    });
+  }
+});
+
 
     const translateJSON = await translateResponse.json();
     const translatedText = translateJSON?.output_text ?? "";
