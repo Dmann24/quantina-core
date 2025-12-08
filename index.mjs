@@ -254,7 +254,7 @@ app.post("/api/scan-translate", async (req, res) => {
     }
 
     // ==================================================================
-    // 1️⃣  OCR USING GPT-4o-mini  (correct 2025 format)
+    // 1️⃣ OCR USING GPT-4o-mini
     // ==================================================================
     const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -271,15 +271,13 @@ app.post("/api/scan-translate", async (req, res) => {
           },
           {
             type: "text",
-            text: "Extract ALL visible text EXACTLY as shown. No summaries. No translations."
+            text: "Extract ALL visible text EXACTLY as shown. No summaries."
           }
         ]
       })
     });
 
     const ocrJSON = await ocrResponse.json();
-
-    // Correct 2025 path
     const rawOCR = ocrJSON?.output_text ?? "";
     const rawText = rawOCR.trim();
 
@@ -296,7 +294,7 @@ app.post("/api/scan-translate", async (req, res) => {
     }
 
     // ==================================================================
-    // 2️⃣ TRANSLATE TEXT USING GPT-4o-mini
+    // 2️⃣ TRANSLATION
     // ==================================================================
     const translateResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -308,8 +306,8 @@ app.post("/api/scan-translate", async (req, res) => {
         model: "gpt-4o-mini",
         input: [
           {
-            role: "user",
-            content: `Translate the following text into ${target_language}. Return ONLY the translation:\n\n${rawText}`
+            type: "text",
+            text: `Translate this text into ${target_language}. Return ONLY the translation:\n\n${rawText}`
           }
         ]
       })
@@ -321,9 +319,9 @@ app.post("/api/scan-translate", async (req, res) => {
     console.log("🌍 [TRANSLATED RESULT] =>", translatedText);
 
     // ==================================================================
-    // 3️⃣ FINAL RESPONSE BACK TO ANDROID
+    // 3️⃣ SEND FINAL RESULT BACK TO ANDROID
     // ==================================================================
-    res.json({
+    return res.json({
       success: true,
       raw_text: rawText,
       translated_text: translatedText
@@ -331,7 +329,7 @@ app.post("/api/scan-translate", async (req, res) => {
 
   } catch (err) {
     console.error("❌ [SCAN ERROR] =>", err);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       raw_text: "",
       translated_text: "",
