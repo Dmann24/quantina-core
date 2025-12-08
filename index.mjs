@@ -238,70 +238,93 @@ const upload = multer({ dest: "uploads/" });
 // =============================================================
 app.post("/api/scan-translate", async (req, res) => {
   try {
-    const apiKey = req.headers["x-api-key"];
-    if (apiKey !== process.env.MASTER_KEY) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-
     const { image_base64, target_language } = req.body;
-
-    if (!image_base64) {
-      return res.status(400).json({ error: "Missing image_base64" });
-    }
-
-    console.log("🖼️ [SCAN] Received image for OCR + translation");
+    console.log("🟨 [SCAN] Received image for OCR + translation");
 
     // ---------------------------------------------------------
-    // 1️⃣ OCR USING OPENAI VISION
+    // 1️⃣ OCR USING GPT-4O  (Vision-enabled)
     // ---------------------------------------------------------
-  const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-  },
-  body: JSON.stringify({
-    model: "gpt-4o-mini",
-    input: [
-      {
-        role: "user",
-        content: [
+    const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        input: [
           {
-            type: "input_image",
-            image_url: `data:image/jpeg;base64,${image_base64}` // FIXED MIME TYPE
-          },
-          {
-            type: "text",
-            text: `
+            role: "user",
+            content: [
+              {
+                type: "input_image",
+                image_url: `data:image/jpeg;base64,${image_base64}`
+              },
+              {
+                type: "text",
+                text: `
 You are an OCR extractor.
-Extract all visible text.
-Return ONLY raw text.
-Do NOT translate.
-Do NOT summarize.
+Extract all visible text EXACTLY as it appears.
+Return ONLY the raw text. No translation. No summary.
 `
+              }
+            ]
           }
         ]
-      }
-    ]
-  })
-});
+      })
+    });
 
-const ocrJSON = await ocrResponse.json();
+    const ocrJSON = await ocrResponse.json();
 
-// 🔥 Correct 2025 OCR output path:
-const ocrRaw = ocrJSON?.output_text ?? "";
-console.log("📄 [VISION RAW MODEL OUTPUT] =>", ocrRaw);
+    // Correct 2025 OCR output path
+    const ocrRaw = ocrJSON?.output_text ?? "";
+    console.log("📄 [VISION RAW MODEL OUTPUT] =>", ocrRaw);
 
-const rawText = ocrRaw.trim();
-console.log("🟦 [VISION OCR RESULT] =>", rawText);
+    const rawText = (ocrRaw || "").trim();
+    console.log("🟦 [VISION OCR RESULT] =>", rawText);
 
-
+    if (!rawText || rawText.length < 2) {
+      return res.json({
+        success: false,
+        raw_text: "",
+        translated_text: "",
+        message: "No text detected."
+      });
+    }
 
     // ---------------------------------------------------------
-    // 2️⃣ TRANSLATE USING USER TARGET LANGUAGE
+    // 2️⃣ TRANSLATE USING GPT-4O-MINI
     // ---------------------------------------------------------
-    const translatedText = await translateText(rawText, target_language);
+    const translateResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `
+Translate the following text into ${target_language}.
+Return only the translated text. No extra words.
 
+Text:
+${rawText}
+`
+              }
+            ]
+          }
+        ]
+      })
+    });
+
+    const translateJSON = await translateResponse.json();
+    const translatedText = translateJSON?.output_text ?? "";
     console.log("🌍 [VISION TRANSLATED RESULT] =>", translatedText);
 
     // ---------------------------------------------------------
@@ -318,6 +341,7 @@ console.log("🟦 [VISION OCR RESULT] =>", rawText);
     res.status(500).json({ error: "Vision OCR/translation failed" });
   }
 });
+
 
 
 
