@@ -256,20 +256,18 @@ const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
     input: [
       {
         role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: "Extract all visible text EXACTLY as shown. No summaries."
-          },
-          {
-            type: "input_image",
-            image_url: `data:image/jpeg;base64,${image_base64}`
-          }
-        ]
+        type: "input_text",
+        text: "Extract ALL visible text EXACTLY as written. No summaries."
+      },
+      {
+        role: "user",
+        type: "input_image",
+        image_url: `data:image/jpeg;base64,${image_base64}`
       }
     ]
   })
 });
+
 
 const ocrJSON = await ocrResponse.json();
 
