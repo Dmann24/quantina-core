@@ -240,6 +240,7 @@ app.post("/api/scan-translate", async (req, res) => {
   try {
     const { image_base64, target_language } = req.body;
     console.log("🟨 [SCAN] Received image for OCR + translation");
+console.log("📦 Base64 size:", image_base64?.length || 0);
 
     // ---------------------------------------------------------
     // 1️⃣ OCR USING GPT-4O  (Vision-enabled)
