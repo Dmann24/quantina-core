@@ -218,26 +218,35 @@ app.post("/api/scan-translate", async (req, res) => {
 
     console.log("📸 OCR request received");
 
+    // 1️⃣ OCR EXTRACTION
     const ocr = await openai.responses.create({
       model: "gpt-4o-mini",
       input: [
         {
           role: "user",
-          type: "input_text",
-          text: "Extract all visible text exactly as shown."
-        },
-        {
-          role: "user",
-          type: "input_image",
-          image_url: `data:image/jpeg;base64,${image_base64}`
+          content: [
+            {
+              type: "text",
+              text: "Extract all visible text from the image. Return ONLY the text."
+            },
+            {
+              type: "input_image",
+              image_url: `data:image/jpeg;base64,${image_base64}`
+            }
+          ]
         }
       ]
     });
 
     const raw = ocr.output_text?.trim() || "";
+    if (!raw) {
+      return res.json({
+        success: false,
+        message: "No text detected."
+      });
+    }
 
-    if (!raw) return res.json({ success: false, message: "No text detected." });
-
+    // 2️⃣ TRANSLATION
     const translated = await openai.responses.create({
       model: "gpt-4o-mini",
       input: [
@@ -246,7 +255,7 @@ app.post("/api/scan-translate", async (req, res) => {
           content: [
             {
               type: "text",
-              text: `Translate to ${target_language}: ${raw}`
+              text: `Translate the following into ${target_language}:\n\n${raw}`
             }
           ]
         }
@@ -261,7 +270,7 @@ app.post("/api/scan-translate", async (req, res) => {
 
   } catch (e) {
     console.error("OCR error:", e);
-    res.status(500).json({ error: "OCR failed" });
+    res.status(500).json({ error: "OCR failed", details: e.message });
   }
 });
 
