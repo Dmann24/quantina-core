@@ -4,8 +4,8 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import fs from "fs";
-import fetch from "node-fetch";
-import FormData from "form-data";
+import fetch from "node-fetch";          // still allowed
+// ❌ Removed: import FormData from "form-data";
 import dotenv from "dotenv";
 import { execSync } from "child_process";
 
@@ -97,6 +97,7 @@ async function setUserLang(id, lang) {
   }
 }
 
+
 // =============================================================
 // MIDDLEWARE
 // =============================================================
@@ -114,7 +115,7 @@ app.use("/langs", express.static("langs"));
 
 
 // =============================================================
-// AUDIO TRANSCRIPTION
+// AUDIO TRANSCRIPTION — UPDATED FOR NEW OPENAI FORMAT
 // =============================================================
 async function transcribeAudio(filePath) {
   try {
@@ -123,7 +124,7 @@ async function transcribeAudio(filePath) {
     const tempWav = `${filePath}.wav`;
     execSync(`ffmpeg -y -i ${filePath} -ac 1 -ar 16000 ${tempWav}`);
 
-    const formData = new FormData();
+    const formData = new FormData();   // native FormData now available in Node
     formData.append("file", fs.createReadStream(tempWav));
     formData.append("model", "gpt-4o-mini-transcribe");
 
@@ -142,7 +143,6 @@ async function transcribeAudio(filePath) {
     fs.unlinkSync(tempWav);
 
     console.log("🎤 [AUDIO] Transcribed text:", data.text);
-
     return data.text?.trim() || "";
   } catch (err) {
     console.error("🔴 [AUDIO ERROR] transcribeAudio:", err);
@@ -233,64 +233,56 @@ async function translateText(text, targetLang) {
 // FILE UPLOAD
 // =============================================================
 const upload = multer({ dest: "uploads/" });
+
+
 // =============================================================
-// LIVE CAMERA SCAN → OCR → TRANSLATION
+// LIVE CAMERA SCAN → OCR → TRANSLATION  (unchanged for now)
 // =============================================================
 app.post("/api/scan-translate", async (req, res) => {
   try {
     const { image_base64, target_language } = req.body;
     console.log("🟨 [SCAN] Received image for OCR + translation");
-console.log("📦 Base64 size:", image_base64?.length || 0);
+    console.log("📦 Base64 size:", image_base64?.length || 0);
 
-// ---------------------------------------------------------
-// 1️⃣ OCR USING GPT-4o mini (Vision-enabled)
-// ---------------------------------------------------------
-const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-  },
-  body: JSON.stringify({
-    model: "gpt-4o-mini",
-    input: [
-      {
-        role: "user",
-        type: "input_text",
-        text: "Extract ALL visible text EXACTLY as written. No summaries."
+    // -------------- OCR REQUEST ----------------
+    const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
       },
-      {
-        role: "user",
-        type: "input_image",
-        image_url: `data:image/jpeg;base64,${image_base64}`
-      }
-    ]
-  })
-});
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: [
+          {
+            role: "user",
+            type: "input_text",
+            text: "Extract ALL visible text EXACTLY as written. No summaries."
+          },
+          {
+            role: "user",
+            type: "input_image",
+            image_url: `data:image/jpeg;base64,${image_base64}`
+          }
+        ]
+      })
+    });
 
+    const ocrJSON = await ocrResponse.json();
+    const rawText = (ocrJSON?.output_text || "").trim();
 
-const ocrJSON = await ocrResponse.json();
+    console.log("📘 [VISION RAW MODEL OUTPUT] =>", rawText);
 
-// 2025 OpenAI Response Path
-const ocrRaw = ocrJSON?.output_text ?? "";
-console.log("📘 [VISION RAW MODEL OUTPUT] =>", ocrRaw);
+    if (!rawText || rawText.length < 2) {
+      return res.json({
+        success: false,
+        raw_text: "",
+        translated_text: "",
+        message: "No text detected."
+      });
+    }
 
-const rawText = (ocrRaw || "").trim();
-console.log("📗 [VISION OCR RESULT] =>", rawText);
-
-if (!rawText || rawText.length < 2) {
-  return res.json({
-    success: false,
-    raw_text: "",
-    translated_text: "",
-    message: "No text detected."
-  });
-}
-
-
-    // ---------------------------------------------------------
-    // 2️⃣ TRANSLATE USING GPT-4O-MINI
-    // ---------------------------------------------------------
+    // -------------- TRANSLATION ----------------
     const translateResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -305,13 +297,7 @@ if (!rawText || rawText.length < 2) {
             content: [
               {
                 type: "text",
-                text: `
-Translate the following text into ${target_language}.
-Return only the translated text. No extra words.
-
-Text:
-${rawText}
-`
+                text: `Translate the following text into ${target_language}. Return only the translated text.\n\n${rawText}`
               }
             ]
           }
@@ -321,11 +307,9 @@ ${rawText}
 
     const translateJSON = await translateResponse.json();
     const translatedText = translateJSON?.output_text ?? "";
+
     console.log("🌍 [VISION TRANSLATED RESULT] =>", translatedText);
 
-    // ---------------------------------------------------------
-    // 3️⃣ SEND RESPONSE
-    // ---------------------------------------------------------
     return res.json({
       success: true,
       raw_text: rawText,
@@ -337,9 +321,6 @@ ${rawText}
     res.status(500).json({ error: "Vision OCR/translation failed" });
   }
 });
-
-
-
 
 
 // =============================================================
@@ -377,14 +358,12 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       });
     }
 
-    // Language processing
     const senderLang = await detectLanguage(message);
     const receiverLang = await getUserLang(receiver_id);
     const translated = await translateText(message, receiverLang);
 
     await setUserLang(sender_id, senderLang);
 
-    // Store in DB
     try {
       await pg.query(
         `INSERT INTO messages (sender_id, receiver_id, body)
@@ -396,11 +375,8 @@ app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
       console.error("🔴 [DB ERROR] Insert message:", err);
     }
 
-    // Real-time socket delivery
     const receivers = userSockets.get(receiver_id);
     if (receivers) {
-      console.log("📡 [SOCKET] Delivering to:", receivers);
-
       receivers.forEach((sockId) => {
         io.to(sockId).emit("p2p_incoming", {
           fromUserId: sender_id,
