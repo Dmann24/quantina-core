@@ -242,10 +242,10 @@ app.post("/api/scan-translate", async (req, res) => {
     console.log("🟨 [SCAN] Received image for OCR + translation");
 console.log("📦 Base64 size:", image_base64?.length || 0);
 
-    // ---------------------------------------------------------
-    // 1️⃣ OCR USING GPT-4o mini  (Vision-enabled)
-    // ---------------------------------------------------------
-    const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
+// ---------------------------------------------------------
+// 1️⃣ OCR USING GPT-4o mini (Vision-enabled)
+// ---------------------------------------------------------
+const ocrResponse = await fetch("https://api.openai.com/v1/responses", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -271,25 +271,24 @@ console.log("📦 Base64 size:", image_base64?.length || 0);
   })
 });
 
+const ocrJSON = await ocrResponse.json();
 
+// 2025 OpenAI Response Path
+const ocrRaw = ocrJSON?.output_text ?? "";
+console.log("📘 [VISION RAW MODEL OUTPUT] =>", ocrRaw);
 
-    const ocrJSON = await ocrResponse.json();
+const rawText = (ocrRaw || "").trim();
+console.log("📗 [VISION OCR RESULT] =>", rawText);
 
-    // Correct 2025 OCR output path
-    const ocrRaw = ocrJSON?.output_text ?? "";
-    console.log("📄 [VISION RAW MODEL OUTPUT] =>", ocrRaw);
+if (!rawText || rawText.length < 2) {
+  return res.json({
+    success: false,
+    raw_text: "",
+    translated_text: "",
+    message: "No text detected."
+  });
+}
 
-    const rawText = (ocrRaw || "").trim();
-    console.log("🟦 [VISION OCR RESULT] =>", rawText);
-
-    if (!rawText || rawText.length < 2) {
-      return res.json({
-        success: false,
-        raw_text: "",
-        translated_text: "",
-        message: "No text detected."
-      });
-    }
 
     // ---------------------------------------------------------
     // 2️⃣ TRANSLATE USING GPT-4O-MINI
