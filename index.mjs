@@ -354,21 +354,7 @@ if (req.body?.mode === "voice") {
       [sender_id, receiver_id, message]
     );
 
-    const sockets = userSockets.get(receiver_id);
-    if (sockets) {
-      sockets.forEach(id => {
-        io.to(id).emit("p2p_incoming", {
-          fromUserId: sender_id,
-          toUserId: receiver_id,
-          audio: mode === "voice",
-          body_raw: message,
-          body_translated: translated,
-          source_lang: senderLang,
-          target_lang: receiverLang,
-          ts: Date.now()
-        });
-      });
-    }
+   
 
    res.json({
   success: true
