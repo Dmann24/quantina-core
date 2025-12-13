@@ -8,7 +8,7 @@
       "enabled": true,
       "endpoint": "/api/peer-message",
       "method": "POST",
-      "modes": ["text"],
+      "modes": ["text","voice"],
       "realtime": true
     },
 
