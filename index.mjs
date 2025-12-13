@@ -15,6 +15,27 @@ import OpenAI from "openai";
 dotenv.config();
 
 // =============================================================
+// INTEGRATION CONTRACT (READ-ONLY)
+// =============================================================
+let integration = null;
+
+try {
+  const raw = fs.readFileSync("./integration.json", "utf-8");
+  integration = JSON.parse(raw);
+
+  console.log("🔗 Integration loaded:", {
+    version: integration.version,
+    core: integration.core,
+    features: Object.keys(integration.features || {})
+  });
+} catch (e) {
+  console.error("❌ Failed to load integration.json");
+  console.error(e.message);
+  process.exit(1);
+}
+
+
+// =============================================================
 // OPENAI CLIENT  (OFFICIAL 2025 SDK) 
 // =============================================================
 const openai = new OpenAI({
@@ -213,6 +234,14 @@ const upload = multer({ dest: "uploads/" });
 // OCR + TRANSLATION (OpenAI Responses API)
 // =============================================================
 app.post("/api/scan-translate", async (req, res) => {
+	
+	if (!integration.features?.scan_ocr?.enabled) {
+  return res.status(403).json({
+    success: false,
+    error: "scan_ocr feature is disabled by core policy"
+  });
+}
+
   try {
     const { image_base64, target_language } = req.body;
 

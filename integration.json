@@ -1,0 +1,29 @@
+{
+  "version": "1.0.0",
+  "core": "Quantina Core",
+  "status": "active",
+
+  "features": {
+    "peer_messaging": {
+      "enabled": true,
+      "endpoint": "/api/peer-message",
+      "method": "POST",
+      "modes": ["text", "voice"],
+      "realtime": true
+    },
+
+    "scan_ocr": {
+      "enabled": true,
+      "endpoint": "/api/scan-translate",
+      "method": "POST",
+      "realtime": false
+    },
+
+    "realtime_transport": {
+      "enabled": true,
+      "protocol": "socket.io",
+      "events": ["p2p_outgoing", "p2p_incoming"]
+    }
+  }
+}
+
