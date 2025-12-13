@@ -308,6 +308,21 @@ app.post("/api/scan-translate", async (req, res) => {
 // MAIN MESSAGE PIPELINE
 // =============================================================
 app.post("/api/peer-message", upload.single("audio"), async (req, res) => {
+	
+	// =============================================================
+// PEER MESSAGE MODE GATING (VOICE ONLY)
+// =============================================================
+if (req.body?.mode === "voice") {
+  const allowedModes = integration.features?.peer_messaging?.modes || [];
+
+  if (!allowedModes.includes("voice")) {
+    return res.status(403).json({
+      success: false,
+      error: "Voice messaging is disabled by core policy"
+    });
+  }
+}
+
   try {
     const { sender_id, receiver_id, mode, text, body } = req.body;
 
