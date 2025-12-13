@@ -20,7 +20,7 @@
     },
 
     "realtime_transport": {
-      "enabled": true,
+      "enabled": false,
       "protocol": "socket.io",
       "events": ["p2p_outgoing", "p2p_incoming"]
     }
