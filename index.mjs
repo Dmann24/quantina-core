@@ -356,9 +356,20 @@ if (req.body?.mode === "voice") {
 
    
 
-   res.json({
-  success: true
+  res.json({
+  success: true,
+  message: {
+    fromUserId: sender_id,
+    toUserId: receiver_id,
+    audio: mode === "voice",
+    body_raw: message,
+    body_translated: translated,
+    source_lang: senderLang,
+    target_lang: receiverLang,
+    ts: Date.now()
+  }
 });
+
 
 
   } catch (e) {
