@@ -370,13 +370,10 @@ if (req.body?.mode === "voice") {
       });
     }
 
-    res.json({
-      success: true,
-      sender_language: senderLang,
-      receiver_language: receiverLang,
-      original: message,
-      translated
-    });
+   res.json({
+  success: true
+});
+
 
   } catch (e) {
     console.error("Peer message error:", e);
