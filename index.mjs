@@ -420,14 +420,26 @@ io.on("connection", socket => {
   });
 
   socket.on("p2p_outgoing", msg => {
-    const receivers = userSockets.get(msg.toUserId);
-    if (!receivers) return;
 
-    receivers.forEach(id =>
-      io.to(id).emit("p2p_incoming", { ...msg, ts: Date.now() })
-    );
+  // ===============================
+  // REALTIME TRANSPORT POLICY GATE
+  // ===============================
+  if (!integration.features?.realtime_transport?.enabled) {
+    console.log("🚫 Realtime transport blocked by integration policy");
+    return;
+  }
+
+  const receivers = userSockets.get(msg.toUserId);
+  if (!receivers) return;
+
+  receivers.forEach(id => {
+    io.to(id).emit("p2p_incoming", {
+      ...msg,
+      ts: Date.now()
+    });
   });
 });
+
 
 
 // =============================================================
