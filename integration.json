@@ -23,7 +23,13 @@
       "enabled": true,
       "protocol": "socket.io",
       "events": ["p2p_outgoing", "p2p_incoming"]
-    }
+    },
+	
+    "ai_receptionist": {
+    "enabled": false,
+    "type": "plugin",
+    "modes": ["voice"],
+    "realtime": true
   }
 }
 
